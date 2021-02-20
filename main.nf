@@ -25,413 +25,457 @@
  */
 
 
+// Configure Variables
 
-// Configurable variables
-params.name = false
-params.email = false
-params.genome = 
-params.plaintext_email = false
 params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
-//params.workdir = "./nextflowTemp"
-//output_docs = file("$baseDir/docs/output.md")
 
-////////////////////////////////////////////////////
-/* --          INITIALIZE LOG                  -- */
-////////////////////////////////////////////////////
-log.info "====================================="
-log.info "  Bidirectional Detection Pipeline   "
-log.info "====================================="
-log.info "name         : ${params.name}"
-log.info "email        : ${params.email}"
-log.info "\n"
+println "\nSTARTING PIPELINE"
 
+// PART 1: Converting cram files to bam files
 
-// Validate inputs
+if (params.crams) {
+  println "[Log 1]: Converting CRAM files to BAM files"
+  println "[Log 1]: Genome file being used ..... $params.genome "
+  println "[Log 1]: Cram file directory ........ $params.crams"
+  println "[Log 1]: Output/Working directory ... $params.workdir"
+  cramfiles = Channel
+                  .fromPath(params.crams)
+		  .map { file -> tuple(file.baseName, file)}
+		  
 
-if ( params.genome ){
-    genome = file(params.genome)
-    if( !genome.exists() ) exit 1, "Genome directory not found: ${params.genome}"
+  process cram_to_bam {
+     cpus 16
+     queue 'short'
+     memory '50 GB'
+     time '1h30m'
+     tag "$prefix"
+
+     input:
+     set val(prefix),file(cram) from cramfiles
+
+     output:
+     set val(prefix), file("${prefix}.sorted.bam") into sorted_bam_file, bam_for_dreg
+     set val(prefix), file("${prefix}.sorted.bam.bai") into sorted_bam_index, bam_index_for_dreg
+
+     module 'samtools'
+     script:
+     """
+     samtools view -@ 16 -b -1 -T ${params.genome} ${cram} > ${prefix}.sorted.bam
+     samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
+     """
+  }
+
+} else {
+
+  sorted_bam_file = Channel
+                  .fromPath(params.bams)
+                  .map { file -> tuple(file.baseName, file)}
+
 }
-
-if ( params.chrom_sizes ){
-    chrom_sizes = file(params.chrom_sizes)
-    if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
- }
+println "[Log 1]: Bam files are ready\n"
 
 
-if ( params.fstitch_path ){
-    fstitch_path = file("${params.fstitch_path}")
-}
-
-if ( params.fstitch_train){
-    fstitch_train = file("${params.fstitch_train}")
-}
-
-if ( params.tfit_path){
-    tfit_path = file("${params.tfit_path}")
-}
-
-if ( params.dreg_path){
-   dreg_path = filr("${params.dreg_path}")
-}
-
-
-/*
- *STEP 1 - Create bedGraphs for analysis using FStitch/Tfit
- */
+// PART 2: Generate bedgraphs
 
 process bedgraphs {
+    println "[Log 2]: Generating BEDGRAPHS for TFit and FStitch"
+    println "[Log 2]: Genome information ..... $params.genome "
+    println "[Log 2]: Chromosome Sizes ....... $params.chrom_sizes"
+
     validExitStatus 0,143
-    tag "$name"
+    tag "$prefix"
     memory '40 GB'
+    queue 'short'
     time '4h'
-    publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"      
+    publishDir "${params.workdir}/bedgraphs", mode: 'copy', pattern: "${prefix}.bedGraph"
 
     input:
-    set val(name), file(bam_file) from sorted_bam_for_bedgraph
-    set val(name), file(bam_indices) from sorted_bam_index_for_bedgraph
-    set val(name), file(millions_mapped) from bam_milmapped_bedgraph
+    set val(prefix), file(bam_file) from sorted_bam_file
+    set val(prefix), file(bam_indices) from sorted_bam_index
 
     output:
-    set val(name), file("${name}.pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
-    set val(name), file("${name}.neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
-    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, nqc_bg
-    set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
-    set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
-    set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
+    set val(prefix), file("${prefix}.pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
+    set val(prefix), file("${prefix}.neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
+    set val(prefix), file("${prefix}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, nqc_bg
 
     script:
     if (params.singleEnd) {
-    """    
+    """
     genomeCoverageBed \
         -bg \
         -strand + \
-        -g ${chrom_sizes} \
+        -g ${params.chrom_sizes} \
         -ibam ${bam_file} \
-        > ${name}.pos.bedGraph
+        > ${prefix}.pos.bedGraph
     genomeCoverageBed \
         -bg \
         -strand - \
-        -g ${chrom_sizes} \
+        -g ${params.chrom_sizes} \
         -ibam ${bam_file} \
         | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
-        > ${name}.neg.bedGraph
-    cat ${name}.pos.bedGraph \
-        ${name}.neg.bedGraph \
-        > ${name}.unsorted.bedGraph
-        
+        > ${prefix}.neg.bedGraph
+    cat ${prefix}.pos.bedGraph \
+        ${prefix}.neg.bedGraph \
+        > ${prefix}.unsorted.bedGraph
+
     sortBed \
-        -i ${name}.unsorted.bedGraph \
-        > ${name}.bedGraph
-    python ${params.rcc} \
-        ${name}.bedGraph \
-        ${millions_mapped} \
-        ${name}.rcc.bedGraph
-        
-    python ${params.rcc} \
-        ${name}.pos.bedGraph \
-        ${millions_mapped} \
-        ${name}.unsorted.pos.rcc.bedGraph
-    sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
-    python ${params.rcc} \
-        ${name}.neg.bedGraph \
-        ${millions_mapped} \
-        ${name}.unsorted.neg.rcc.bedGraph
-    sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
+        -i ${prefix}.unsorted.bedGraph \
+        > ${prefix}.bedGraph
+
     """
     } else {
-    """   
+    """
     samtools view \
         -h -b -f 0x0040 \
         ${bam_file} \
-        > ${name}.first_pair.bam
-        
+        > ${prefix}.first_pair.bam
+
     samtools view \
         -h -b -f 0x0080 \
         ${bam_file} \
-        > ${name}.second_pair.bam
-        
+        > ${prefix}.second_pair.bam
+
     genomeCoverageBed \
         -bg \
         -split \
         -strand - \
-        -g ${chrom_sizes} \
-        -ibam ${name}.first_pair.bam \
+        -g ${params.chrom_sizes} \
+        -ibam ${prefix}.first_pair.bam \
         | sortBed \
-        > ${name}.first_pair.pos.bedGraph
+        > ${prefix}.first_pair.pos.bedGraph
     genomeCoverageBed \
         -bg \
         -split \
         -strand + \
-        -g ${chrom_sizes} \
-        -ibam ${name}.first_pair.bam \
+        -g ${params.chrom_sizes} \
+        -ibam ${prefix}.first_pair.bam \
         | sortBed \
         | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
-        > ${name}.first_pair.neg.bedGraph
-                     
+        > ${prefix}.first_pair.neg.bedGraph
+
     genomeCoverageBed \
         -bg \
         -split \
         -strand + \
-        -g ${chrom_sizes} \
-        -ibam ${name}.second_pair.bam \
+        -g ${params.chrom_sizes} \
+        -ibam ${prefix}.second_pair.bam \
         | sortBed \
-        > ${name}.second_pair.pos.bedGraph
+        > ${prefix}.second_pair.pos.bedGraph
     genomeCoverageBed \
         -bg \
         -split \
         -strand - \
-        -g ${chrom_sizes} \
-        -ibam ${name}.second_pair.bam \
+        -g ${params.chrom_sizes} \
+        -ibam ${prefix}.second_pair.bam \
         | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
         | sortBed \
-        > ${name}.second_pair.neg.bedGraph
-                     
+        > ${prefix}.second_pair.neg.bedGraph
+
     unionBedGraphs \
-        -i ${name}.first_pair.pos.bedGraph ${name}.second_pair.pos.bedGraph \
+        -i ${prefix}.first_pair.pos.bedGraph ${prefix}.second_pair.pos.bedGraph \
         | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
-        > ${name}.pos.bedGraph 
-        
+        > ${prefix}.pos.bedGraph
+
     unionBedGraphs \
-        -i ${name}.first_pair.neg.bedGraph ${name}.second_pair.neg.bedGraph \
+        -i ${prefix}.first_pair.neg.bedGraph ${prefix}.second_pair.neg.bedGraph \
         | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
-        > ${name}.neg.bedGraph 
-    
-    cat ${name}.pos.bedGraph \
-        ${name}.neg.bedGraph \
-        > ${name}.unsorted.bedGraph
-        
+        > ${prefix}.neg.bedGraph
+
+    cat ${prefix}.pos.bedGraph \
+        ${prefix}.neg.bedGraph \
+        > ${prefix}.unsorted.bedGraph
+
     sortBed \
-        -i ${name}.unsorted.bedGraph \
-        > ${name}.bedGraph
-    python ${params.rcc} \
-        ${name}.bedGraph \
-        ${millions_mapped} \
-        ${name}.rcc.bedGraph
-        
-    python ${params.rcc} \
-        ${name}.pos.bedGraph \
-        ${millions_mapped} \
-        ${name}.unsorted.pos.rcc.bedGraph
-    sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
-    python ${params.rcc} \
-        ${name}.neg.bedGraph \
-        ${millions_mapped} \
-        ${name}.unsorted.neg.rcc.bedGraph
-    sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph     
+        -i ${prefix}.unsorted.bedGraph \
+        > ${prefix}.bedGraph
+
     """
     }
  }
 
-/*
- *STEP 2 - Create bedGraphs and bigwigs for dREG
- */
 
-process dreg_prep {
-    validExitStatus 0,143
-    errorStrategy 'ignore'
-    tag "$name"
-    memory '150 GB'
-    publishDir "${params.outdir}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
-    
-    when:
-    params.dreg
-
-    input:
-    set val(name), file(cram_file) from cram_dreg_prep
-    set val(name), file(cram_index) from cram_index_dreg_prep
-    file(chrom_sizes) from chrom_sizes
-
-    output:
-    set val(name), file("*.bw") into dreg_bigwig
-
-    script:
-    """
-    echo "Creating BigWigs suitable as inputs to dREG"
-    
-    export CRAM_REFERENCE=${genome}    
-    
-    bamToBed -i ${cram_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
-    awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
-    > ${name}.dreg.bed
-    sortBed -i ${name}.dreg.bed > ${name}.dreg.sort.bed
-    
-    echo positive strand processed to bedGraph
-    
-    bedtools genomecov \
-            -bg \
-            -i ${name}.dreg.sort.bed \
-            -g ${chrom_sizes} \
-            -strand + \
-            > ${name}.pos.bedGraph
-    sortBed \
-            -i ${name}.pos.bedGraph \
-            > ${name}.pos.sort.bedGraph
-            
-    bedtools genomecov \
-            -bg \
-            -i ${name}.dreg.sort.bed \
-            -g ${chrom_sizes} \
-            -strand - \
-            | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${name}.neg.bedGraph
-    sortBed \
-            -i ${name}.neg.bedGraph \
-            > ${name}.neg.sort.bedGraph
-            
-    echo negative strand processed to bedGraph
-    
-    ${params.bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
-    ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
-    
-    echo bedGraph to bigwig done
-    """
- }
+println "[Log 2]: Bedgraph files have been generated\n"
 
 
-
-/*
- * STEP 3 - Running FStitch
- */
+// PART 3: Running FStitch
 
 process FStitch {
-    tag "$name"
+    println "[Log 3]: Running FStitch"
+    println "[Log 3]: FStitch training file .. $params.fstitch_train"
+    println "[Log 3]: FStich source code ..... $params.fstitch_path"
+
+    tag "$prefix"
     memory '50 GB'
-    time '1h'
-    validExitStatus 0
-    publishDir "${params.outdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
-    publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
-    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "${name}.fstitch_bidir.bed"
-    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir.{short,long}.bed"
-    publishDir "${params.outdir}/fstitch/bidirs/hist/", mode: 'copy', pattern: "*.html"
-    publishDir "${params.outdir}/fstitch/bidirs/stats/", mode: 'copy', pattern: "*.txt"
-    
+    queue 'short'
+    time '4h'
+    validExitStatus 0,134
+    errorStrategy 'ignore'
+
+    publishDir "${params.workdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
+    publishDir "${params.workdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
+    publishDir "${params.workdir}/fstitch/bidirs/", mode: 'copy', pattern: "${prefix}.fstitch_bidir.bed"
+    publishDir "${params.workdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir.{short,long}.bed"
+    publishDir "${params.workdir}/fstitch/bidirs/hist/", mode: 'copy', pattern: "*.html"
+    publishDir "${params.workdir}/fstitch/bidirs/stats/", mode: 'copy', pattern: "*.txt"
+
     when:
     params.fstitch
-    
+
     input:
-    set val(name), file(bg) from fstitch_bg
-    set val(name), file(pos_bg) from pos_fstitch_bg
-    set val(name), file(neg_bg) from neg_fstitch_bg
-        
+    set val(prefix), file(bg) from fstitch_bg
+    set val(prefix), file(pos_bg) from pos_fstitch_bg
+    set val(prefix), file(neg_bg) from neg_fstitch_bg
+
     output:
     file ("*.hmminfo") into fs_train_out
     file ("*.fstitch_seg.bed") into fs_seg_out
-    set val(name), file ("*.fstitch_bidir.bed") into fs_bidir_out
+    set val(prefix), file ("*.fstitch_bidir.bed") into fs_bidir_out
     file ("*fstitch_bidir.{short,long}.bed") into fs_bidir_short_long_out
     file ("*.html") into fs_bidir_plot_out
     file ("*.txt") into fs_bidir_stats_out
-    
+
     script:
     """
-    ${fstitch_path} train \
+    ${params.fstitch_path} train \
         -s + \
         -b ${bg} \
-        -t ${fstitch_train} \
-        -o ${name}.fstitch.hmminfo
-        
-     ${fstitch_path} segment \
+        -t ${params.fstitch_train} \
+        -o ${prefix}.fstitch.hmminfo
+
+    ${params.fstitch_path} segment \
         -s + \
         -b ${pos_bg} \
-        -p ${name}.fstitch.hmminfo \
-        -o ${name}.pos.fstitch_seg.bed
-     ${fstitch_path} segment \
+        -p ${prefix}.fstitch.hmminfo \
+        -o ${prefix}.pos.fstitch_seg.bed
+
+    ${params.fstitch_path} segment \
         -s - \
         -b ${neg_bg} \
-        -p ${name}.fstitch.hmminfo \
-        -o ${name}.neg.fstitch_seg.bed
-    cat ${name}.pos.fstitch_seg.bed \
-        ${name}.neg.fstitch_seg.bed \
-        | sortBed > ${name}.fstitch_seg.bed
+        -p ${prefix}.fstitch.hmminfo \
+        -o ${prefix}.neg.fstitch_seg.bed
+
+    cat ${prefix}.pos.fstitch_seg.bed \
+        ${prefix}.neg.fstitch_seg.bed \
+        | sortBed > ${prefix}.fstitch_seg.bed
+
     bidir \
-        -b ${name}.fstitch_seg.bed \
-        -g ${genome_refseq} \
-        -o ${name}.fstitch_bidir.bed \
+        -b ${prefix}.fstitch_seg.bed \
+        -g ${params.genome_refseq} \
+        -o ${prefix}.fstitch_bidir.bed \
         -p \
-        -s    
+        -s
     """
 }
 
+println "[Log 3]: Done Running FStitch\n"
 
-/*
- * STEP 4 - Running Tfit
- */
+
+// PART 4: Running TFit
 
 process tfit {
-    tag "$name"
+    println "[Log 4]: Running TFit full model"
+
+    tag "$prefix"
     memory '25 GB'
     time '20h'
     cpus 16
     queue 'short'
     validExitStatus 0
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
-    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-    
+
+    publishDir "${params.workdir}/tfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
+    publishDir "${params.workdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+
     when:
     params.tfit
-    
+
     input:
-    set val(name), file (bidirs) from fs_bidir_out
-    set val(name), file(bg) from tfit_bg
-        
+    set val(prefix), file (bidirs) from fs_bidir_out
+    set val(prefix), file(bg) from tfit_bg
+
     output:
-    set val(name), file ("${name}.tfit_bidirs.bed") into tfit_bed_out
+    set val(prefix), file ("${prefix}.tfit_bidirs.bed") into tfit_bed_out
     file ("*.tsv") into tfit_full_model_out
     file ("*.log") into tfit_logs_out
-        
+
     script:
         """
         export OMP_NUM_THREADS=16
-        
-        ${tfit_path} model \
+
+        ${params.tfit_path} model \
             -bg ${bg} \
             -s ${bidirs} \
-            -N $name \
+            -N $prefix \
             -l \
-            -o ${name}.tfit_bidirs.bed \
+            -o ${prefix}.tfit_bidirs.bed \
             --threads 16 \
         """
 }
 
+
+
 process prelimtfit {
-    tag "$name"
+    println "[Log 4]: Running TFit prelim"
+
+    tag "$prefix"
     memory '100 GB'
     time '48h'
     cpus 16
     queue 'long'
     validExitStatus 0
-    publishDir "${params.outdir}/prelimtfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
-    publishDir "${params.outdir}/prelimtfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-    publishDir "${params.outdir}/prelimtfit/prelim", mode: 'copy', pattern: "*tfit_prelim.bed"
-    
+
+    publishDir "${params.workdir}/prelimtfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
+    publishDir "${params.workdir}/prelimtfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+    publishDir "${params.workdir}/prelimtfit/prelim", mode: 'copy', pattern: "*tfit_prelim.bed"
+
     when:
     params.prelimtfit
-    
+
     input:
-    set val(name), file(bg) from prelimtfit_bg
-        
+    set val(prefix), file(bg) from prelimtfit_bg
+
     output:
     file ("*tfit_prelim.bed") into tfit_prelim_out
     file ("*tfit_bidirs.bed") into prelimtfit_bed_out
     file ("*.tsv") into prelimtfit_full_model_out
     file ("*.log") into prelimtfit_logs_out
-        
+
     script:
         """
         export OMP_NUM_THREADS=16
-        
-        ${tfit_path} prelim \
+
+        ${params.tfit_path} prelim \
             -bg ${bg} \
-            -N $name \
+            -N $prefix \
             -l \
-            -o ${name}.tfit_prelim.bed \
+            -o ${prefix}.tfit_prelim.bed \
             --threads 16
-        
-        ${tfit_path} model \
+
+        ${params.tfit_path} model \
             -bg ${bg} \
-            -s ${name}.tfit_prelim.bed \
-            -N $name \
+            -s ${prefix}.tfit_prelim.bed \
+            -N $prefix \
             -l \
-            -o ${name}.tfit_bidirs.bed \
+            -o ${prefix}.tfit_bidirs.bed \
             --threads 16
+        """
+}
+
+println "[Log 4]: Done Running TFit\n"
+
+
+
+// PART 5: Preparing bigwig files for dREG
+
+process dreg_prep {
+    println "[Log 5]: Generating bigwig files for dREG"
+
+    validExitStatus 0,143
+    errorStrategy 'ignore'
+    tag "$prefix"
+    memory '150 GB'
+    queue 'short'
+
+    publishDir "${params.workdir}/bigwig/", mode: 'copy', pattern: "*.bw"
+
+    when:
+    params.dreg
+
+    input:
+    set val(prefix), file(bam_file) from bam_for_dreg
+    set val(prefix), file(bam_index) from bam_index_for_dreg
+
+    output:
+    set val(prefix), file("*.bw") into dreg_bigwig
+    set val(prefix), file("${prefix}.pos.bw") into pos_dreg_bw
+    set val(prefix), file("${prefix}.neg.bw") into neg_dreg_bw
+
+    script:
+    if (params.singleEnd) {
+    """
+    echo "Creating BigWigs suitable as inputs to dREG"
+
+    export CRAM_REFERENCE=${params.genome}
+
+    bamToBed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
+    awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
+    > ${prefix}.dreg.bed
+    sortBed -i ${prefix}.dreg.bed > ${prefix}.dreg.sort.bed
+
+    echo "positive strand processed to bedGraph"
+
+    bedtools genomecov \
+            -bg \
+            -i ${prefix}.dreg.sort.bed \
+            -g ${params.chrom_sizes} \
+            -strand + \
+            > ${prefix}.pos.bedGraph
+
+    sortBed \
+            -i ${prefix}.pos.bedGraph \
+            > ${prefix}.pos.sort.bedGraph
+
+    bedtools genomecov \
+            -bg \
+            -i ${prefix}.dreg.sort.bed \
+            -g ${params.chrom_sizes} \
+            -strand - \
+            | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${prefix}.neg.bedGraph
+
+    sortBed \
+            -i ${prefix}.neg.bedGraph \
+            > ${prefix}.neg.sort.bedGraph
+
+    echo "negative strand processed to bedGraph"
+
+    ${params.bedGraphToBigWig} ${prefix}.pos.sort.bedGraph ${params.chrom_sizes} ${prefix}.pos.bw
+    ${params.bedGraphToBigWig} ${prefix}.neg.sort.bedGraph ${params.chrom_sizes} ${prefix}.neg.bw
+
+    echo "bedGraph to bigwig done"
+    """
+  } else {
+    // https://github.com/Danko-Lab/proseq2.0/blob/master/proseq2.0.bsh
+     println "[Log 5]: TO DO- add PE bigwig file conversion https://github.com/Danko-Lab/proseq2.0/blob/master/proseq2.0.bsh"
+}
+
+}
+
+println "[Log 5]: Bigwig files are ready \n"
+
+
+// PART 6: Running dREG
+
+process dreg_run {
+    println "Log[6]: Running dREG"
+    println "Log[6]: N.B. Requires GPUs"
+
+    tag "$prefix"
+    memory '120 GB'
+    time '14h'
+    cpus 4
+    queue 'titan'
+    validExitStatus 0
+
+    publishDir "${params.workdir}/dreg/", mode: 'copy', pattern: "*dREG*"
+
+    when:
+    params.dreg
+
+    input:
+    set val(prefix), file(pos_bw) from pos_dreg_bw
+    set val(prefix), file(neg_bw) from neg_dreg_bw
+
+    output:
+    set val(prefix), file ("${prefix}.*") into dREG_out
+
+    module 'samtools/1.10'
+
+    script:
+        """
+        bash ${params.dreg_path} \
+	     ${pos_bw} \
+	     ${neg_bw} \
+	     $prefix \
+	     ${params.dreg_train} \
+	     4 1 
         """
 }
