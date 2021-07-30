@@ -20,8 +20,8 @@
  * =============
  * Authors
  * =============
- * Rutendo F. Sigauke
- * rutendo.sigauke@cuanschutz.edu
+ * Rutendo F. Sigauke : rutendo.sigauke@cuanschutz.edu
+ * Lynn Sanford	      : lynn.sanford@colorado.edu
  */
 
 
