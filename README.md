@@ -15,7 +15,9 @@ dREG models
 
 ftp://cbsuftp.tc.cornell.edu/danko/hub/dreg.models
 mammals and drosophila https://github.com/Danko-Lab/dREG-Model
-## FSticth
+
+## FStitch
 Install from https://github.com/Dowell-Lab/FStitch
-## TFit
+
+## Tfit
 Install from https://github.com/Dowell-Lab/Tfit
