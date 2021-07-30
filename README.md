@@ -7,7 +7,7 @@ This pipeline is built on top of and is an expansion of the Nascent-Flow pipelin
 ## dREG
 Install dREG from https://github.com/Danko-Lab/dREG
 
-Note: Instructions to install the dependencies for dREG can be found on the repository
+Note: Instructions to install the dependencies for dREG can be found on their repository.
 Since rphast is nolonger on CRAN, it can be nstalled from the tar ball (install.packages("rphast_1.6.11.tar.gz", repos=NULL, type="source"))
 Archived from CRAN https://cran.r-project.org/src/contrib/Archive/rphast/
 Github repo https://github.com/CshlSiepelLab/RPHAST
