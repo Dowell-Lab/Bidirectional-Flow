@@ -52,7 +52,6 @@ def helpMessage() {
     """.stripIndent()
 }
 
-
 // Configure Variables
 
 params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
@@ -127,6 +126,7 @@ process get_software_versions {
 software_versions.collectFile(name: "software_versions_bidir_${workflow.runName}.txt", storeDir: "${params.outdir}/pipeline_info")
 
 println "[Log 0]: Software versions complete"
+
 
 // PART 1: Converting cram files to bam files
 
