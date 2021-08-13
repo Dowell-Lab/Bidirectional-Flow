@@ -107,23 +107,23 @@ process get_software_versions {
 
     script:
     """
-    printf "Bidirectional-Flow version:\t%s\n" ${params.version}
-    printf "Nextflow version:\t%s\n" ${workflow.nextflow.version}
-    printf "Samtools version:\t%s\n" \$(samtools --version | head -1 | awk '{print \$NF}')
-    printf "Bedtools version:\t%s\n" \$(bedtools --version | awk -F " v" '{print \$2}')
-    printf "MPich version:\t%s\n" \$(mpichversion | head -1 | awk '{print \$NF}')
-    printf "OpenMPI version:\t%s\n" \$(ompi_info | head -2 | tail -1 | awk '{print \$NF}')
-    printf "GCC version:\t%s\n" \$(gcc --version | head -1 | awk '{print \$NF}')
-    printf "FStitch version:\t%s\n" \$(${params.fstitch_path} train --version)
-    printf "Tfit version:\t%s\n" \$(${params.tfit_path} model --version)
-    printf "R version:\t%s\n" \$(R --version | head -1 | awk '{print \$3}')
-    printf "Rsubread version:\t%s\n" \$(Rscript -e 'library("Rsubread");packageVersion("Rsubread")' 2>&1 | tail -1 | awk '{print \$NF}')
-    printf "Boost version:\t%s\n" \$(ls -d /Users/\$USER/.local/boost* | head -1 | awk -F "_" '{print \$(NF-2)"."\$(NF-1)"."\$(NF)}')
-    printf "dREG version:\t%s\n" \$(Rscript -e 'library("dREG");packageVersion("dREG")' 2>&1 | tail -1 | awk '{print \$NF}')
+    printf "bidirectionalflow_version: %s\n" ${params.version}
+    printf "nextflow_version: %s\n" ${workflow.nextflow.version}
+    printf "samtools_version: %s\n" \$(samtools --version | head -1 | awk '{print \$NF}')
+    printf "bedtools_version: %s\n" \$(bedtools --version | head -1 | awk -F " v" '{print \$2}')
+    printf "mpich_version: %s\n" \$(mpichversion | head -1 | awk '{print \$NF}')
+    printf "openmpi_version: %s\n" \$(ompi_info | head -2 | tail -1 | awk '{print \$NF}')
+    printf "gcc_version: %s\n" \$(gcc --version | head -1 | awk '{print \$NF}')
+    printf "fstitch_version: %s\n" \$(${params.fstitch_path} train --version | head -1)
+    printf "tfit_version: %s\n" \$(${params.tfit_path} model --version | head -1)
+    printf "r_version: %s\n" \$(R --version | head -1 | awk '{print \$3}')
+    printf "rsubread_version: %s\n" \$(Rscript -e 'library("Rsubread");packageVersion("Rsubread")' 2>&1 | tail -1 | awk '{print \$NF}')
+    printf "boost_version: %s\n" \$(ls -d /Users/\$USER/.local/boost* | head -1 | awk -F "_" '{print \$(NF-2)"."\$(NF-1)"."\$(NF)}')
+    printf "dreg_version: %s\n" \$(Rscript -e 'library("dREG");packageVersion("dREG")' 2>&1 | tail -1 | awk '{print \$NF}')
     """
 }
 
-software_versions.collectFile(name: "software_versions_bidir_${workflow.runName}.txt", storeDir: "${params.outdir}/pipeline_info")
+software_versions.collectFile(name: "software_versions_bidir_${workflow.runName}.yaml", storeDir: "${params.outdir}/pipeline_info")
 
 println "[Log 0]: Software versions complete"
 
