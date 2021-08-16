@@ -174,7 +174,7 @@ process bam_conversion_tfit {
    cpus 16
    queue 'short'
    memory '5 GB'
-   time '30min'
+   time '1h'
    tag "$prefix"
 
    when:
@@ -209,7 +209,7 @@ process bedgraphs {
 
     validExitStatus 0,143
     tag "$prefix"
-    memory '20 GB'
+    memory '40 GB'
     queue 'short'
     time '4h'
     
@@ -457,7 +457,7 @@ process dreg_prep {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$prefix"
-    memory '5 GB'
+    memory '60 GB'
     queue 'short'
 
     publishDir "${params.outdir}/bigwig/", mode: 'copy', pattern: "*.bw"
