@@ -58,6 +58,12 @@ params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
 params.tfit_run = "$baseDir/bin/tfit_run.sh"
 software_versions = Channel.create()
 
+import java.text.SimpleDateFormat
+def date = new java.util.Date()
+def sdf = new SimpleDateFormat("yyMMdd")
+output_date =  sdf.format(date)
+
+String output_date = new java.text.SimpleDateFormat("yyMMdd").format(new Date())
 
 // Header log info
 log.info """=======================================================
@@ -123,7 +129,7 @@ process get_software_versions {
     """
 }
 
-software_versions.collectFile(name: "software_versions_bidir_${workflow.runName}.yaml", storeDir: "${params.outdir}/pipeline_info")
+software_versions.collectFile(name: "software_versions_bidir_${output_date}_${workflow.runName}.yaml", storeDir: "${params.outdir}/pipeline_info")
 
 println "[Log 0]: Software versions complete"
 
