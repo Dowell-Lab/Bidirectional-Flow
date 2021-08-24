@@ -584,7 +584,7 @@ process gene_count {
     queue 'short'
     validExitStatus 0
 
-    publishDir "${params.outdir}/featurecounts_genes/", mode: 'copy', pattern: "*.gene_counts.txt"
+    publishDir "${params.outdir}/featurecounts_genes/", mode: 'copy', pattern: "*gene_counts.txt"
 
     when:
     params.gene_count
@@ -594,7 +594,7 @@ process gene_count {
     set val(prefix), file(bam_indices) from bam_index_for_gene_counting
 
     output:
-    set val(prefix), file ("*.gene_counts.txt") into gene_count_out
+    set val(prefix), file ("*gene_counts.txt") into gene_count_out
 
     script:
     if (params.singleEnd) {
