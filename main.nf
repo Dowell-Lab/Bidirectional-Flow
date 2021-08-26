@@ -646,6 +646,8 @@ process gene_count {
         quote=FALSE,sep="\t",
         row.names=FALSE) 
 
+    gtf_table <- read.table("${params.trunc_refseq}")
+    
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.trunc_refseq}",
         isGTFAnnotationFile=TRUE,
