@@ -126,6 +126,7 @@ process get_software_versions {
     printf "rsubread_version: %s\n" \$(Rscript -e 'library("Rsubread");packageVersion("Rsubread")' 2>&1 | tail -1 | awk '{print \$NF}')
     printf "boost_version: %s\n" \$(ls -d /Users/\$USER/.local/boost* | head -1 | awk -F "_" '{print \$(NF-2)"."\$(NF-1)"."\$(NF)}')
     printf "dreg_version: %s\n" \$(Rscript -e 'library("dREG");packageVersion("dREG")' 2>&1 | tail -1 | awk '{print \$NF}')
+    printf "pipeline_hash: %s\n" ${workflow.scriptId}
     """
 }
 
