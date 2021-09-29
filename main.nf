@@ -610,7 +610,9 @@ process gene_count {
     library("Rsubread")
 
     gtf_table <- read.table("${params.filtered_refseq}")   
- 
+
+    if (${paired} == 'FALSE') {
+
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.filtered_refseq}",
         isGTFAnnotationFile=TRUE,
@@ -628,6 +630,64 @@ process gene_count {
         file=paste0("${prefix}",".stranded.gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.trunc_refseq}",
+        isGTFAnnotationFile=TRUE,
+        GTF.featureType="gene_length",
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=TRUE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=1,
+        nthreads=8)
+    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".stranded.5ptrunc_gene_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    } else {
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.filtered_refseq}",
+        isGTFAnnotationFile=TRUE,
+        GTF.featureType="gene_length",
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=TRUE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=2,
+        nthreads=8)
+    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".stranded.gene_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.trunc_refseq}",
+        isGTFAnnotationFile=TRUE,
+        GTF.featureType="gene_length",
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=TRUE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=2,
+        nthreads=8)
+    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".stranded.5ptrunc_gene_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    }
 
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.filtered_refseq}",
@@ -658,24 +718,6 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        strandSpecific=1,
-        nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
-        file=paste0("${prefix}",".stranded.5ptrunc_gene_counts.txt"),
-        quote=FALSE,sep="\t",
-        row.names=FALSE)
-
-    fc <- featureCounts(files="${bam_file}",
-        annot.ext="${params.trunc_refseq}",
-        isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
-        useMetaFeatures=FALSE,
-        allowMultiOverlap=TRUE,
-        largestOverlap=TRUE,
-        countMultiMappingReads=FALSE,
-        isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
@@ -684,7 +726,7 @@ process gene_count {
         file=paste0("${prefix}",".unstranded.5ptrunc_gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
-
+    
     """
 }
 
