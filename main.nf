@@ -580,7 +580,7 @@ process gene_count {
 
     tag "$prefix"
     memory '8 GB'
-    time '2h'
+    time '3h'
     cpus 8
     queue 'short'
     validExitStatus 0
