@@ -159,8 +159,8 @@ if (params.crams) {
      set val(prefix),file(cram) from cramfiles
 
      output:
-     set val(prefix), file("${prefix}.sorted.bam") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting
-     set val(prefix), file("${prefix}.sorted.bam.bai") into sorted_bam_index, bam_index_for_dreg, bam_index_for_gene_counting
+     set val(prefix), file("${prefix}.sorted.bam") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting, bam_for_bidir_counting
+     set val(prefix), file("${prefix}.sorted.bam.bai") into sorted_bam_index, bam_index_for_dreg, bam_index_for_gene_counting, bam_index_for_bidir_counting
 
      module 'samtools'
      script:
@@ -731,6 +731,71 @@ process gene_count {
 }
 
 println "[Log 7]: Done Running FeatureCounts\n"
+
+
+// PART 7: Counting over bidirectionals
+
+process gene_count {
+   println "[Log 7]: Running FeatureCounts (bidirectionals)"
+
+    tag "$prefix"
+    memory '8 GB'
+    time '3h'
+    cpus 8
+    queue 'short'
+    validExitStatus 0
+
+    publishDir "${params.outdir}/featurecounts_bidirs/", mode: 'copy', pattern: "*bidir_counts.txt"
+
+    when:
+    params.bidir_count
+
+    input:
+    set val(prefix), file(bam_file) from bam_for_bidir_counting
+    set val(prefix), file(bam_indices) from bam_index_for_bidir_counting
+
+    output:
+    set val(prefix), file ("*bidir_counts.txt") into bidir_count_out
+
+    script:
+    if (params.singleEnd) {
+        paired = 'FALSE'
+    } else {
+        paired = 'TRUE'
+    }
+
+    """
+
+    #!/usr/bin/env Rscript
+
+    library("Rsubread")
+
+## Need to make gtf files from bidir beds ##
+    gtf_table <- read.table("${params.filtered_refseq}")
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.filtered_refseq}",
+        isGTFAnnotationFile=TRUE,
+##        GTF.featureType="gene_length",
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=TRUE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=0,
+        nthreads=8)
+#    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
+#    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    """
+}
+
+println "[Log 8]: Done Running FeatureCounts (bidirs)\n"
+
 
 /*
  * Completion report
