@@ -735,7 +735,7 @@ println "[Log 7]: Done Running FeatureCounts\n"
 
 // PART 7: Counting over bidirectionals
 
-process gene_count {
+process bidir_count {
    println "[Log 7]: Running FeatureCounts (bidirectionals)"
 
     tag "$prefix"
