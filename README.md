@@ -21,4 +21,3 @@ Install from https://github.com/Dowell-Lab/FStitch
 
 ## Tfit
 Install from https://github.com/Dowell-Lab/Tfit
->>>>>>> ed8735ae39269a053bd0b63dfcb747e9c4177102
