@@ -117,7 +117,6 @@ process get_software_versions {
     printf "nextflow_version: %s\n" ${workflow.nextflow.version}
     printf "samtools_version: %s\n" \$(samtools --version | head -1 | awk '{print \$NF}')
     printf "bedtools_version: %s\n" \$(bedtools --version | head -1 | awk -F " v" '{print \$2}')
-    printf "mpich_version: %s\n" \$(mpichversion | head -1 | awk '{print \$NF}')
     printf "openmpi_version: %s\n" \$(ompi_info | head -2 | tail -1 | awk '{print \$NF}')
     printf "gcc_version: %s\n" \$(gcc --version | head -1 | awk '{print \$NF}')
     printf "fstitch_version: %s\n" \$(${params.fstitch_path} train --version | head -1)
