@@ -47,7 +47,10 @@ def helpMessage() {
     Analysis Options:
         --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
-        --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
+        --tfit                         Run Tfit bidir. If used, you must also specify the Tfit_path parameter.
+        --tfit_prelim		       Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
+        --tfit_model		       Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
+        --prelim_files		       Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
         --dreg                         Produce bigwigs formatted for input to dREG.
     """.stripIndent()
 }
@@ -81,6 +84,9 @@ summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch ? 'YES' : 'NO'
 summary['Tfit']             = params.tfit ? 'YES' : 'NO'
+summary['Tfit prelim']      = params.tfit_prelim ? 'YES' : 'NO'
+summary['Tfit model']       = params.tfit_model ? 'YES' : 'NO'
+summary['Tfit prelim files']	= params.prelim_files ? 'YES' : 'NO'
 summary['dREG']             = params.dreg ? 'YES' : 'NO'
 summary['Gene counting']    = params.gene_count ? 'YES' : 'NO'
 if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
@@ -144,8 +150,7 @@ if (params.crams) {
   println "[Log 1]: Output directory ... $params.outdir"
   cramfiles = Channel
                   .fromPath(params.crams)
-		  .map { file -> tuple(file.baseName, file)}
-		  
+		  .map { file -> tuple(file.baseName, file)}		  
 
   process cram_to_bam {
      cpus 16
@@ -231,7 +236,7 @@ process bedgraphs {
     output:
     set val(prefix), file("${prefix}.pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
     set val(prefix), file("${prefix}.neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
-    set val(prefix), file("${prefix}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, nqc_bg
+    set val(prefix), file("${prefix}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, modeltfit_bg, nqc_bg
 
     script:
     if (params.singleEnd) {
@@ -412,10 +417,10 @@ process FStitch {
 println "[Log 3]: Done Running FStitch\n"
 
 
-// PART 4: Running TFit
+// PART 4: Running Tfit
 
 process tfit {
-    println "[Log 4]: Running TFit prelim"
+    println "[Log 4]: Running Tfit (full)"
 
     tag "$prefix"
     memory '70 GB'
@@ -432,17 +437,16 @@ process tfit {
     params.tfit
 
     input:
-    set val(prefix), file(bg) from prelimtfit_bg
+    set val(prefix), file(bg) from tfit_bg
 
     output:
-    file ("*-1_prelim_bidir_hits.bed") into tfit_prelim_out
-    file ("*-1_bidir_predictions.bed") into prelimtfit_bed_out
-    file ("*.tsv") into prelimtfit_full_model_out
-    file ("*.log") into prelimtfit_logs_out
+    file ("*-1_prelim_bidir_hits.bed") into tfit_full_prelim_out
+    file ("*-1_bidir_predictions.bed") into tfit_full_bed_out
+    file ("*.tsv") into tfit_full_model_out
+    file ("*.log") into tfit_full_logs_out
 
     script:
         """
-
 	${params.tfit_run} -t ${params.tfit_path} \
 			   -c ${params.tfit_config} \
 			   -b ${bg} \
@@ -452,7 +456,90 @@ process tfit {
         """
 }
 
-println "[Log 4]: Done Running TFit\n"
+println "[Log 4]: Done Running Tfit\n"
+
+// PART 4b: Running individual Tfit components
+
+if (!params.tfit) {
+    if (params.prelim_files) {
+        tfit_prelim_out = Channel
+            .fromPath(params.prelim_files)
+            .map { file -> tuple(file.baseName, file)}
+    } else if ((params.tfit_model && !params.prelim_files) || params.tfit_prelim) {
+        process tfit_prelim {
+            println "[Log 4b]: Running Tfit prelim"
+
+            tag "$prefix"
+            memory '70 GB'
+            time '72h'
+            cpus 32
+            queue 'long'
+            validExitStatus 0
+
+            publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+            publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*-1_prelim_bidir_hits.bed"
+
+            input:
+            set val(prefix), file(bg) from prelimtfit_bg
+
+            output:
+            file ("*-1_prelim_bidir_hits.bed") into tfit_prelim_out
+            file ("*.tsv") into prelimtfit_model_out
+            file ("*.log") into prelimtfit_logs_out
+
+            script:
+                """
+                ${params.tfit_run} -t ${params.tfit_path} \
+                                   -c ${params.tfit_config} \
+                                   -b ${bg} \
+                                   -p ${prefix} \
+                                   -n 32
+
+                """
+            println "[Log 4b]: Done Running Tfit prelim\n"
+        }
+    }
+
+    process tfit_model {
+        println "[Log 4b]: Running Tfit model"
+
+        tag "$prefix"
+        memory '70 GB'
+        time '72h'
+        cpus 32
+        queue 'long'
+        validExitStatus 0
+
+        publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*-1_bidir_predictions.bed"
+        publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+
+        when:
+        params.tfit_model
+
+        input:
+        set val(prefix), file(bg) from modeltfit_bg
+        set file(prelim) from tfit_prelim_out
+
+        output:
+        file ("*-1_bidir_predictions.bed") into tfit_model_bed_out
+        file ("*.tsv") into tfit_model_model_out
+        file ("*.log") into tfit_model_logs_out
+
+        script:
+            """
+
+#            ${params.tfit_run} -t ${params.tfit_path} \
+#                               -c ${params.tfit_config} \
+#                               -b ${bg} \
+#                               -p ${prefix} \
+#                               -n 32
+
+            """
+    }
+
+println "[Log 4b]: Done Running Tfit model\n"
+
+}
 
 
 // PART 5: Preparing bigwig files for dREG
