@@ -500,41 +500,40 @@ if (!params.tfit) {
         }
     }
 
-    process tfit_model {
-        println "[Log 4b]: Running Tfit model"
+    if (params.tfit_model) {
+        process tfit_model {
+            println "[Log 4b]: Running Tfit model"
 
-        tag "$prefix"
-        memory '70 GB'
-        time '72h'
-        cpus 32
-        queue 'long'
-        validExitStatus 0
+            tag "$prefix"
+            memory '70 GB'
+            time '72h'
+            cpus 32
+            queue 'long'
+            validExitStatus 0
 
-        publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*-1_bidir_predictions.bed"
-        publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+            publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*-1_bidir_predictions.bed"
+            publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
 
-        when:
-        params.tfit_model
+            input:
+            set val(prefix), file(bg) from modeltfit_bg
+            set file(prelim) from tfit_prelim_out
 
-        input:
-        set val(prefix), file(bg) from modeltfit_bg
-        set file(prelim) from tfit_prelim_out
+            output:
+            file ("*-1_bidir_predictions.bed") into tfit_model_bed_out
+            file ("*.tsv") into tfit_model_model_out
+            file ("*.log") into tfit_model_logs_out
 
-        output:
-        file ("*-1_bidir_predictions.bed") into tfit_model_bed_out
-        file ("*.tsv") into tfit_model_model_out
-        file ("*.log") into tfit_model_logs_out
+            script:
+                """
 
-        script:
-            """
+#                ${params.tfit_run} -t ${params.tfit_path} \
+#                                   -c ${params.tfit_config} \
+#                                   -b ${bg} \
+#                                   -p ${prefix} \
+#                                   -n 32
 
-#            ${params.tfit_run} -t ${params.tfit_path} \
-#                               -c ${params.tfit_config} \
-#                               -b ${bg} \
-#                               -p ${prefix} \
-#                               -n 32
-
-            """
+                """
+        }
     }
 
 println "[Log 4b]: Done Running Tfit model\n"
