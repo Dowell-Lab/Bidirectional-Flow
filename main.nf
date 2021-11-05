@@ -189,7 +189,7 @@ process bam_conversion_tfit {
    tag "$prefix"
 
    when:
-   params.tfit || params.fstitch
+   params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim
 
    input:
    set val(prefix),file(bam) from sorted_bam_file
@@ -227,7 +227,7 @@ process bedgraphs {
     publishDir "${params.outdir}/bedgraphs", mode: 'copy', pattern: "${prefix}.bedGraph"
 
     when:
-    params.tfit || params.fstitch
+    params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim
 
     input:
     set val(prefix), file(bam_file) from bam_for_tfit
@@ -460,12 +460,12 @@ println "[Log 4]: Done Running Tfit\n"
 
 // PART 4b: Running individual Tfit components
 
-if (!params.tfit) {
+if (params.tfit == false) {
     if (params.prelim_files) {
         tfit_prelim_out = Channel
             .fromPath(params.prelim_files)
             .map { file -> tuple(file.baseName, file)}
-    } else if ((params.tfit_model && !params.prelim_files) || params.tfit_prelim) {
+    } else if ((params.tfit_model && params.prelim_files == false) || params.tfit_prelim) {
         process tfit_prelim {
             println "[Log 4b]: Running Tfit prelim"
 
@@ -489,7 +489,7 @@ if (!params.tfit) {
 
             script:
                 """
-                ${params.tfit_run} -t ${params.tfit_path} \
+                sh ${params.tfit_run} -t ${params.tfit_path} \
                                    -c ${params.tfit_config} \
                                    -b ${bg} \
                                    -p ${prefix} \
