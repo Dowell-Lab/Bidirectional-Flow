@@ -460,85 +460,85 @@ println "[Log 4]: Done Running Tfit\n"
 
 // PART 4b: Running individual Tfit components
 
-if (params.tfit == false) {
-    if (params.prelim_files) {
-        tfit_prelim_out = Channel
-            .fromPath(params.prelim_files)
-            .map { file -> tuple(file.baseName, file)}
-    } else if ((params.tfit_model && params.prelim_files == false) || params.tfit_prelim) {
-        process tfit_prelim {
-            println "[Log 4b]: Running Tfit prelim"
-
-            tag "$prefix"
-            memory '70 GB'
-            time '72h'
-            cpus 32
-            queue 'long'
-            validExitStatus 0
-
-            publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-            publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*-1_prelim_bidir_hits.bed"
-
-            input:
-            set val(prefix), file(bg) from prelimtfit_bg
-
-            output:
-            file ("*-1_prelim_bidir_hits.bed") into tfit_prelim_out
-            file ("*.tsv") into prelimtfit_model_out
-            file ("*.log") into prelimtfit_logs_out
-
-            script:
-                """
-                sh ${params.tfit_run} -t ${params.tfit_path} \
-                                   -c ${params.tfit_config} \
-                                   -b ${bg} \
-                                   -p ${prefix} \
-                                   -n 32
-
-                """
-            println "[Log 4b]: Done Running Tfit prelim\n"
-        }
-    }
-
-    if (params.tfit_model) {
-        process tfit_model {
-            println "[Log 4b]: Running Tfit model"
-
-            tag "$prefix"
-            memory '70 GB'
-            time '72h'
-            cpus 32
-            queue 'long'
-            validExitStatus 0
-
-            publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*-1_bidir_predictions.bed"
-            publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-
-            input:
-            set val(prefix), file(bg) from modeltfit_bg
-            set file(prelim) from tfit_prelim_out
-
-            output:
-            file ("*-1_bidir_predictions.bed") into tfit_model_bed_out
-            file ("*.tsv") into tfit_model_model_out
-            file ("*.log") into tfit_model_logs_out
-
-            script:
-                """
-
-#                ${params.tfit_run} -t ${params.tfit_path} \
-#                                   -c ${params.tfit_config} \
-#                                   -b ${bg} \
-#                                   -p ${prefix} \
-#                                   -n 32
-
-                """
-        }
-    }
-
-println "[Log 4b]: Done Running Tfit model\n"
-
+if (params.prelim_files) {
+    tfit_prelim_out = Channel
+        .fromPath(params.prelim_files)
+        .map { file -> tuple(file.baseName, file)}
 }
+
+process tfit_prelim {
+    println "[Log 4b]: Running Tfit prelim"
+
+    tag "$prefix"
+    memory '70 GB'
+    time '6h'
+    cpus 32
+    queue 'short'
+    validExitStatus 0
+
+    publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
+    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*-1_prelim_bidir_hits.bed"
+
+    when:
+    params.tfit_prelim || params.tfit || (params.tfit_model && params.prelim_files == false)
+
+    input:
+    set val(prefix), file(bg) from prelimtfit_bg
+
+    output:
+    file ("*-1_prelim_bidir_hits.bed") into tfit_prelim_out
+    file ("*.log") into prelimtfit_logs_out
+
+    script:
+    """
+    ${params.tfit_run} -t ${params.tfit_path} \
+                       -c ${params.tfit_config} \
+                       -b ${bg} \
+                       -p ${prefix} \
+                       -n 32
+    """
+
+}    
+
+println "[Log 4b]: Done Running Tfit prelim\n"
+
+process tfit_model {
+    println "[Log 4b]: Running Tfit model"
+
+    tag "$prefix"
+    memory '70 GB'
+    time '72h'
+    cpus 32
+    queue 'long'
+    validExitStatus 0
+
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*-1_bidir_predictions.bed"
+    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+
+    when:
+    params.tfit_model || params.tfit
+
+    input:
+    set val(prefix), file(bg) from modeltfit_bg
+    file(prelim) from tfit_prelim_out
+
+    output:
+    file ("*-1_bidir_predictions.bed") into tfit_model_bed_out
+    file ("*.tsv") into tfit_model_model_out
+    file ("*.log") into tfit_model_logs_out
+
+    script:
+    """
+
+#    ${params.tfit_run} -t ${params.tfit_path} \
+#                       -c ${params.tfit_config} \
+#                       -b ${bg} \
+#                       -p ${prefix} \
+#                       -n 32
+
+     """
+}
+println "[Log 4b]: Done Running Tfit model\n"
 
 
 // PART 5: Preparing bigwig files for dREG
