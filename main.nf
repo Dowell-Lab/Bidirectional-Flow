@@ -40,6 +40,7 @@ def helpMessage() {
 
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
+        --r2_five_prime		       If input file is paired, specifies if read 2 has the 5 prime end (default R1 is five prime, must be manually determined)
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
@@ -81,6 +82,7 @@ if(params.crams) summary['Crams']            = params.crams
 if(params.bams) summary['Bams']              = params.bams
 summary['Genome Ref']       = params.genome
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
+summary['Five prime read']  = params.r2_five_prime ? 'Read 2' : 'Read 1 or single end'
 summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch ? 'YES' : 'NO'
 summary['Tfit']             = params.tfit ? 'YES' : 'NO'
@@ -185,7 +187,7 @@ process bam_conversion_tfit {
    cpus 16
    queue 'short'
    memory '5 GB'
-   time '1h'
+   time '2h'
    tag "$prefix"
 
    when:
@@ -610,8 +612,45 @@ process dreg_prep {
     echo "bedGraph to bigwig done"
     """
   } else {
-    // https://github.com/Danko-Lab/proseq2.0/blob/master/proseq2.0.bsh
-     println "[Log 5]: TO DO- add PE bigwig file conversion https://github.com/Danko-Lab/proseq2.0/blob/master/proseq2.0.bsh"
+    if (params.r2_five_prime) {
+      """
+      samtools view -bf 0x2 -q 20 ${bam_file} | samtools sort -n -@ 8 \
+        > ${prefix}.dreg.bam
+
+      bedtools bamtobed -bedpe -mate1 -i ${prefix}.dreg.bam \
+        | awk 'BEGIN{OFS="\t"} (\$10 == "+") {print \$1,\$5,\$5+1,\$7,\$8,\$10}; (\$10 == "-") {print \$1,\$6-1,\$6,\$7,\$8,\$10}' \
+        | sort -k 1,1 -k 2,2n > ${prefix}.dreg.sort.bed
+
+      bedtools genomecov -bg \
+        -i ${prefix}.dreg.sort.bed \
+        -g ${params.chrom_sizes} \
+        -strand + \
+        > ${prefix}.pos.bedGraph
+
+      bedtools genomecov -bg \
+        -i ${prefix}.dreg.sort.bed \
+        -g ${params.chrom_sizes} \
+        -strand - \
+        > ${prefix}.neg.noinv.bedGraph
+
+      cat ${prefix}.neg.noinv.bedGraph \
+        | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' \
+        > ${prefix}.neg.bedGraph
+
+      ${params.bedGraphToBigWig} ${prefix}.pos.bedGraph \
+        ${params.chrom_sizes} ${prefix}.pos.bw
+
+      ${params.bedGraphToBigWig} ${prefix}.neg.bedGraph \
+        ${params.chrom_sizes} ${prefix}.neg.bw
+
+
+
+      """
+    } else {
+      """
+
+      """
+    }
 }
 
 }
