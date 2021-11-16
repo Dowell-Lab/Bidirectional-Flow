@@ -1,0 +1,60 @@
+========================================
+ Bidirectional-Flow v0.2
+========================================
+Run Name: infallible_snyder
+
+## Bidirectional-Flow execution completed successfully! ##
+
+
+## Bidirectional-Flow execution completed successfully! ##
+
+
+
+
+The workflow was completed at Tue Nov 16 16:09:17 MST 2021 (duration: 36.1s)
+
+The command used to launch the workflow was as follows:
+
+  nextflow run main.nf -profile hg38_rusi2317 --help
+
+
+
+Pipeline Configuration:
+-----------------------
+ - Pipeline Name: Bidirectional-Flow
+ - Help Message: true
+ - Pipeline Version: 0.2
+ - Run Name: infallible_snyder
+ - Crams: data/*.cram
+ - Genome Ref: /scratch/Shares/dowell/genomes/hg38/hg38.fa
+ - Data Type: Paired-End
+ - Five prime read: Read 2 or single end
+ - Output dir: ./results
+ - FStitch: NO
+ - Tfit: NO
+ - Tfit prelim: NO
+ - Tfit model: NO
+ - Tfit prelim files: NO
+ - dREG: NO
+ - Gene counting: NO
+ - Working dir: /Users/rusi2317/bin/Bidirectional-Flow/work
+ - Container Engine: null
+ - Current home: /Users/rusi2317
+ - Current user: rusi2317
+ - Current path: /Users/rusi2317/bin/Bidirectional-Flow
+ - Script dir: /Users/rusi2317/bin/Bidirectional-Flow
+ - Config Profile: hg38_rusi2317
+ - Date Started: Tue Nov 16 16:08:41 MST 2021
+ - Date Completed: Tue Nov 16 16:09:17 MST 2021
+ - Pipeline script file path: /Users/rusi2317/bin/Bidirectional-Flow/main.nf
+ - Pipeline script hash ID: cc8f8880330f5920b8964f739e290f02
+ - Pipeline repository Git URL: Not stored
+ - Pipeline repository Git Commit: See hash
+ - Pipeline Git branch/tag: See hash
+ - Nextflow Version: 18.10.1
+ - Nextflow Build: 5003
+ - Nextflow Compile Timestamp: 24-10-2018 14:03 UTC
+
+--
+Bidirectional-Flow
+https://github.com/Dowell-Lab/Bidirectional-Flow

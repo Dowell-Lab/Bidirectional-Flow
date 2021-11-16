@@ -60,6 +60,9 @@ def helpMessage() {
 
 params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
 params.tfit_run = "$baseDir/bin/tfit_run.sh"
+params.tfit_prelim_run = "$baseDir/bin/tfit_prelim.sh"
+params.tfit_model_run = "$baseDir/bin/tfit_model.sh"
+params.prelim_filter = "$baseDir/bin/prelim_filter.py"
 software_versions = Channel.create()
 
 import java.text.SimpleDateFormat
@@ -431,9 +434,9 @@ process tfit {
     queue 'long'
     validExitStatus 0
 
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*-1_bidir_predictions.bed"
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*-1_prelim_bidir_hits.bed"
+    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
 
     when:
     params.tfit
@@ -442,8 +445,8 @@ process tfit {
     set val(prefix), file(bg) from tfit_bg
 
     output:
-    file ("*-1_prelim_bidir_hits.bed") into tfit_full_prelim_out
-    file ("*-1_bidir_predictions.bed") into tfit_full_bed_out
+    file ("*_prelim_bidir_hits.bed") into tfit_full_prelim_out
+    file ("*_bidir_predictions.bed") into tfit_full_bed_out
     file ("*.tsv") into tfit_full_model_out
     file ("*.log") into tfit_full_logs_out
 
@@ -479,7 +482,7 @@ process tfit_prelim {
     validExitStatus 0
 
     publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
-    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*-1_prelim_bidir_hits.bed"
+    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
 
     when:
     params.tfit_prelim || params.tfit || (params.tfit_model && params.prelim_files == false)
@@ -488,12 +491,12 @@ process tfit_prelim {
     set val(prefix), file(bg) from prelimtfit_bg
 
     output:
-    file ("*-1_prelim_bidir_hits.bed") into tfit_prelim_out
+    file ("*_prelim_bidir_hits.bed") into tfit_prelim_out
     file ("*.log") into prelimtfit_logs_out
 
     script:
     """
-    ${params.tfit_run} -t ${params.tfit_path} \
+    ${params.tfit_prelim_run} -t ${params.tfit_path} \
                        -c ${params.tfit_config} \
                        -b ${bg} \
                        -p ${prefix} \
@@ -514,9 +517,10 @@ process tfit_model {
     queue 'long'
     validExitStatus 0
 
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*-1_bidir_predictions.bed"
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-
+    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
+    
     when:
     params.tfit_model || params.tfit
 
@@ -525,20 +529,29 @@ process tfit_model {
     file(prelim) from tfit_prelim_out
 
     output:
-    file ("*-1_bidir_predictions.bed") into tfit_model_bed_out
+    file ("*_prelim_coverage_filtered_diced.bed") into tfit_prelim_filtered
+    file ("*_bidir_predictions.bed") into tfit_model_bed_out
     file ("*.tsv") into tfit_model_model_out
     file ("*.log") into tfit_model_logs_out
 
+    module 'python/3.6.3'
+
     script:
     """
+    python3 ${params.prelim_filter} \
+            -p ${prelim} \
+            -b ${bg} \
+            -s ${prefix} \
+            -o .
 
-#    ${params.tfit_run} -t ${params.tfit_path} \
-#                       -c ${params.tfit_config} \
-#                       -b ${bg} \
-#                       -p ${prefix} \
-#                       -n 32
+    ${params.tfit_model_run} -t ${params.tfit_path} \
+                        -c ${params.tfit_config} \
+                        -b ${bg} \
+                        -k ${prefix}_prelim_coverage_filtered_diced.bed \
+                        -p ${prefix} \
+                        -n 32
 
-     """
+    """
 }
 println "[Log 4b]: Done Running Tfit model\n"
 
