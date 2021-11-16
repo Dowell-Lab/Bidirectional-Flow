@@ -5,7 +5,7 @@ This pipeline is built on top of and is an expansion of the Nascent-Flow pipelin
 
 # Installation
 
-  $ git clone https://github.com/Dowell-Lab/Bidirectional-Flow.git 
+ `$ git clone https://github.com/Dowell-Lab/Bidirectional-Flow.git`
 
 # Requirements
 
@@ -20,28 +20,28 @@ Check each tool for configuration requirements.
 - Python3 
 
 - dREG
-Install dREG from https://github.com/Danko-Lab/dREG
+  Install dREG from https://github.com/Danko-Lab/dREG
 
-Note: Instructions to install the dependencies for dREG can be found on their repository.
-Since rphast is nolonger on CRAN, it can be nstalled from the tar ball (install.packages("rphast_1.6.11.tar.gz", repos=NULL, type="source"))
+  Note: Instructions to install the dependencies for dREG can be found on their repository.
+  Since rphast is nolonger on CRAN, it can be nstalled from the tar ball (install.packages("rphast_1.6.11.tar.gz", repos=NULL, type="source"))
 
-Archived from CRAN https://cran.r-project.org/src/contrib/Archive/rphast/
+  Archived from CRAN https://cran.r-project.org/src/contrib/Archive/rphast/
 
-Github repo https://github.com/CshlSiepelLab/RPHAST
+  Github repo https://github.com/CshlSiepelLab/RPHAST
 
--- dREG models:
+       - dREG models:
 
-ftp://cbsuftp.tc.cornell.edu/danko/hub/dreg.models
+       ftp://cbsuftp.tc.cornell.edu/danko/hub/dreg.models
 
-mammals and drosophila https://github.com/Danko-Lab/dREG-Model
+       mammals and drosophila https://github.com/Danko-Lab/dREG-Model
 
 - FStitch
-Install from https://github.com/Dowell-Lab/FStitch
+  Install from https://github.com/Dowell-Lab/FStitch
 
 - Tfit
-Install from https://github.com/Dowell-Lab/Tfit
+  Install from https://github.com/Dowell-Lab/Tfit
 
-Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step.
+  Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step.
 
 # Running Bidirectional-Flow
 
