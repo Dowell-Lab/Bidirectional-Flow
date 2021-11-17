@@ -1,2 +1,0 @@
-task_id	hash	native_id	name	status	exit	submit	duration	realtime	%cpu	rss	vmem	rchar	wchar
-1	f6/55dafe	8019321	get_software_versions	COMPLETED	0	2021-11-16 16:08:42.622	34.7s	1.4s	89.6%	49.6 MB	738.8 MB	11.7 MB	2.7 KB
