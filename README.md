@@ -45,7 +45,38 @@ Check each tool for configuration requirements.
 
 # Running Bidirectional-Flow
 
+## Usage
 
+   The typical command for running the pipeline is as follows:
+    
+   `$ nextflow run main.nf -profile slurm --crams '/project/*.sorted.cram' --workdir '/project/tempfiles' --outdir '/project/'`
+
+   Below are the arguments :
+
+   ```
+    Required arguments:
+         -profile                      Configuration profile to use. <genome_user>
+         --crams                       Directory pattern for cram files: /project/*.sorted.cram (Required if --bams not specified).
+         --bams                        Directory pattern for bam files: /project/*.sorted.bam (Required if --crams not specified).
+         --workdir                     Nextflow working directory where all intermediate files are saved.
+
+    Input File options:
+        --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
+        --r1_five_prime                If input file is paired, specifies if read 1 has the 5 prime end (default R2 is five prime, must be manually determined)
+
+    Save options:
+        --outdir                       Specifies where to save the output from the nextflow run.
+
+    Analysis Options:
+        --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
+        --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
+        --tfit                         Run Tfit bidir. If used, you must also specify the Tfit_path parameter.
+        --tfit_prelim                  Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
+        --tfit_model                   Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
+        --prelim_files                 Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
+        --dreg                         Produce bigwigs formatted for input to dREG.
+
+   ```
 
 ## Loading requirements on SLURM
 
