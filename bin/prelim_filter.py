@@ -146,7 +146,7 @@ def break_large_regions(chrom, width, start, stop, region_id, break_by=10000):
         region name (ME_ for prelim regions)
 
     break_by : int
-        region chucks to be generatated (default = 10,000)
+        region chucks to be generated (default = 10,000)
 
     Returns
     -------
@@ -223,7 +223,7 @@ def break_large_regions_staggered(chrom, width, start, stop, region_id, break_by
     breaks_width = math.ceil(width / num_regions)
 
     # determine number of region breaks WITH staggering
-    num_regions_exp = num_regions + (num_regions - 1)
+    num_regions_exp = int(num_regions + (num_regions - 1))
 
     # how much to stagger the start coordinates
     # this will vary depending on the region widths
@@ -308,6 +308,180 @@ def dice_prelim(prelim_bed_list, staggered=True, break_by=10000):
 
     return all_regions
 
+def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, slop=750):
+    """load in gene gtf file and extract TSS ends into regions
+
+    Parameters
+    ----------
+    tss_gtf : str (path)
+        path to gene annotation file (in gtf format)
+
+    chrom_sizes : str (path)
+        path to chromosome sizes file
+
+    outdir : str (path)
+        output directory for TSS bedfiles
+
+    tss_width : int (2000 default)
+        width of region around TSS coordinate
+
+    add_slop : boolean (True default)
+        whether to add bases to TSS regions for merging
+
+    slop : int (750 default)
+        amount to add to TSS regions
+
+    Returns
+    -------
+    Bed file(s) containing TSS regions and slopped regions, if specified
+
+    Path to TSS bedfile
+    """
+
+    # Load in gtf file and get 5' coordinate of gene
+    tss_coord = []
+
+    with open(tss_gtf) as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+
+            # get individual regions from bed file
+            regions = line.split("\t")
+
+            # check if gtf file
+            if len(regions) != 9:
+                raise IndexError(
+                    "GTF file should have 9 columns. Double check input."
+                )
+            # Take first coordinate if on + strand
+            elif regions[6] == "+":
+                meta = regions[8].split("\"")
+                region_to_add = [regions[0], (int(regions[3]) - 1), regions[3], meta[1], "0,0,0"]
+                if region_to_add not in tss_coord:
+                    tss_coord.append([regions[0], (int(regions[3]) - 1), regions[3], meta[1], "0,0,0"])
+            # Take second coordinate if on - strand
+            elif regions[6] == "-":
+                meta = regions[8].split("\"")
+                region_to_add = [regions[0], (int(regions[4]) - 1), regions[4], meta[1], "0,0,0"]
+                if region_to_add not in tss_coord:
+                    tss_coord.append([regions[0], (int(regions[4]) - 1), regions[4], meta[1], "0,0,0"])
+            else:
+                raise IndexError(
+                    "GTF file should have strand info in 7th column. Double check input."
+                )
+
+    # Write out base 5' coordinate bedfile in bed3 format
+    with open(str(outdir) + "/tss_single_base.bed", "w") as output:
+        for tss in tss_coord:
+            output.write(
+                str(
+                    str(tss[0])
+                    + "\t"
+                    + str(tss[1])
+                    + "\t"
+                    + str(tss[2])
+                    + "\t"
+                    + str(tss[3])
+                    + "\t"
+                    + str(tss[4])
+                    + "\n"
+                )
+            )
+
+        output.close()    
+
+    # Generate filepaths
+    tss_bed = str(outdir) + "/tss_" + str(tss_width) + "bp.bed"
+    if add_slop == True:
+        tss_slop_bed = tss_bed[0:-4] + "_" + str(slop) + "overlap.bed"
+    else:
+        tss_slop_bed = ""
+
+    # Run bedtools slop to get base TSS regions
+    os.system(
+        "bedtools slop -i {} -g {} -b {} > {}".format(
+            (outdir + "/tss_single_base.bed"),
+            chrom_sizes,
+            math.ceil(tss_width/2),
+            tss_bed
+        )
+    )
+
+    # If adding slop for merging, run again with extra slop
+    if add_slop == True:
+        os.system(
+            "bedtools slop -i {} -g {} -b {} > {}".format(
+                (outdir + "/tss_single_base.bed"),
+                chrom_sizes,
+                (math.ceil(tss_width/2) + slop),
+                tss_slop_bed,
+            )
+        )
+
+    return tss_bed, tss_slop_bed
+
+
+def designate_tss(prelim, tss_bed, sample_name, outdir, tss_slop_bed, add_slop=True):
+
+    """Wrapper for running bedtools to subtract TSS regions from 
+    prelim and merge prelim and TSS regions
+
+    Parameters
+    ----------
+    prelim : str (path)
+        path to prelim bedgraph
+
+    tss_bed : str (path)
+        path to bed file containing TSS regions
+
+    sample_name : str
+        basename for output files
+
+    outdir : str (path)
+        path to output directory
+
+    tss_slop_bed : str (path)
+        path to bed file with added overlap for merging
+
+    add_slop : boolean (True default)
+        whether to add bases to TSS regions for merging
+
+    Returns
+    -------
+    Sorted prelim file with TSS regions added or clearly defined 
+    within previous prelim regions
+
+    Path to prelim file
+
+    """
+    # set a base name for the output files
+    base_name = str(sample_name)
+    prelim_filepath = str(outdir) + "/" + base_name + "_prelim_tss.bed"
+
+    os.system(
+        "bedtools subtract -a {} -b {} > {}/{}_prelim_tss_subtract.bed".format(
+            prelim, tss_bed, outdir, base_name
+        )
+    )
+
+    # Concatenate and sort prelim and tss files
+    if add_slop == False:
+        os.system(
+            "cat {}/{}_prelim_tss_subtract.bed {} | bedtools sort > {}/{}_prelim_tss.bed".format(
+                outdir, base_name, tss_bed, outdir, base_name
+            )
+        )
+    else:
+        os.system(
+            "cat {}/{}_prelim_tss_subtract.bed {} | bedtools sort > {}/{}_prelim_tss.bed".format(
+                outdir, base_name, tss_slop_bed, outdir, base_name
+            )
+        )
+
+    return prelim_filepath
+
 
 def write_bedfile(region_prelim, region_list):
     """Write output from the input list as a bedfile
@@ -348,10 +522,16 @@ def main(
     prelim_bedgraph,
     output_directory,
     sample_name,
+    tss_gtf="",
+    chrom_sizes="",
     bed_type="tfit_prelim",
     filter_at=9,
     break_by=10000,
     staggered=True,
+    parse_tss=True,
+    tss_width=2000,
+    add_slop=True,
+    tss_slop=750
 ):
     """Process input prelim files"""
 
@@ -362,11 +542,15 @@ def main(
         base = os.path.basename(prelim_bed)
         base_name = base[: base.index(".")]
 
-    # 1a : add TSS regions here?
+    # 2 : parse TSS regions and point to new prelim bed file
+    if parse_tss == True:
+        tss_bed, tss_slop_bed = parse_gtf_tss(
+            tss_gtf, chrom_sizes, output_directory, tss_width, add_slop, tss_slop)
+        prelim_filepath = designate_tss(
+            prelim_bed, tss_bed, sample_name, output_directory, tss_slop_bed, add_slop)
+        prelim_bed = prelim_filepath
 
-    # 1b : load the new prelim + TSS regions
-
-    # 2 : load the prelim bed file
+    # 3 : load the prelim bed file
     prelim_bed_list = read_bedfile(prelim_bed, bed_type="tfit_prelim")
 
     # 4: break regions
@@ -382,7 +566,6 @@ def main(
         prelim_diced_list,
     )
     
-
     # 6 : get coverage over prelim regions
     bedtools_cov(
         "{}/{}_prelim_diced_intermediate.bed".format(output_directory, base_name),
@@ -460,7 +643,40 @@ parser.add_argument(
     help="Base name for the input sample",
     metavar="STR",
 )
-
+parser.add_argument(
+    "-g",
+    "--gtf_file",
+    dest="gtf",
+    type=str,
+    help="Gene annotion GTF file",
+    metavar="FILE",
+)
+parser.add_argument(
+    "-c",
+    "-chrom_file",
+    dest="chrom",
+    type=str,
+    help="Chromosome sizes file",
+    metavar="FILE",
+)
+parser.add_argument(
+    "-w",
+    "--tss_width",
+    dest="tsswidth",
+    type=int,
+    default=2000,
+    help="Width of region around TSS",
+    metavar="INT",
+)
+parser.add_argument(
+    "-l",
+    "--slop_val",
+    dest="slopval",
+    type=int,
+    default=750,
+    help="Amount of extra overlap of TSS regions",
+    metavar="INT",
+)
 parser.add_argument(
     "--stagger",
     dest="stagger",
@@ -473,10 +689,34 @@ parser.add_argument(
     action="store_false",
     help="No stagger, regions broken in to -k smaller segments",
 )
-parser.set_defaults(stagger=True)
+parser.add_argument(
+    "--tss",
+    dest="tss",
+    action="store_true",
+    help="Parse prelim with TSS file to separate out TSS regions",
+)
+parser.add_argument(
+    "--no-tss",
+    dest="tss",
+    action="store_false",
+    help="No parsing prelim file along with TSS file",
+)
+parser.add_argument(
+    "--tss-slop",
+    dest="slop",
+    action="store_true",
+    help="Add slop around TSS before region concatenation",
+)
+parser.add_argument(
+    "--no-tss-slop",
+    dest="slop",
+    action="store_false",
+    help="No slop around TSS regions",
+)
+
+parser.set_defaults(stagger=True, tss=True, slop=True)
 
 args = parser.parse_args()
-
 
 # main.run(args.freq, args.exp, args.outdir, args.len, args.num, args.sd)
 main(
@@ -484,8 +724,14 @@ main(
     args.bedgraph,
     args.outdir,
     args.samp,
+    args.gtf,
+    args.chrom,
     args.btype,
     args.filt_cov,
     args.brk,
     args.stagger,
+    args.tss,
+    args.tsswidth,
+    args.slop,
+    args.slopval
 )
