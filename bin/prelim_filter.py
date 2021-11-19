@@ -171,10 +171,10 @@ def break_large_regions(chrom, width, start, stop, region_id, break_by=10000):
         _region_id = "{}:{}".format(str(region_id), str(i))
 
         # determine start coordinate
-        _start = start + (break_width * i)  # (break_by *i)
+        _start = int(start + (break_width * i))  # (break_by *i)
 
         # determine stop coordinates
-        _stop = start + (break_width * (i + 1))  # - 1 #(break_by *(i +1))) - 1
+        _stop = int(start + (break_width * (i + 1)))  # - 1 #(break_by *(i +1))) - 1
 
         # update the last stop coordinate to the regions stop coordinate
         if _stop < stop:
@@ -242,7 +242,7 @@ def break_large_regions_staggered(chrom, width, start, stop, region_id, break_by
 
     for i, j in zip(_start, _region_id):
 
-        _stop = i + breaks_width
+        _stop = int(i + breaks_width)
 
         if _stop < stop:
             _stop
@@ -250,7 +250,7 @@ def break_large_regions_staggered(chrom, width, start, stop, region_id, break_by
             _stop = stop
 
         # add the update coordinates to a list
-        updated_regions.append([chrom, i, _stop, j])
+        updated_regions.append([chrom, int(i), _stop, j])
 
     return updated_regions
 
@@ -384,7 +384,7 @@ def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, s
 
     # Run bedtools slop to get base TSS regions
     os.system(
-        "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2 | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
+        "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2n | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
             (outdir + "/tss_single_base.bed"),
             chrom_sizes,
             math.ceil(tss_width/2),
@@ -395,11 +395,11 @@ def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, s
     # If adding slop for merging, run again with extra slop
     if add_slop == True:
         os.system(
-            "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2 | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
+            "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2n | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
                 (outdir + "/tss_single_base.bed"),
                 chrom_sizes,
-                (math.ceil(tss_width/2) + slop),
-                tss_slop_bed,
+                (math.ceil(tss_width/2) + int(slop)),
+                tss_slop_bed
             )
         )
 
@@ -575,7 +575,7 @@ def main(
         tss_bed, tss_slop_bed = parse_gtf_tss(
             tss_gtf, chrom_sizes, output_directory, tss_width, add_slop, tss_slop)
         prelim_filepath = designate_tss(
-            prelim_bed, tss_bed, sample_name, output_directory, tss_slop_bed, add_slop)
+            prelim_bed, tss_bed, base_name, output_directory, tss_slop_bed, add_slop)
         prelim_bed = prelim_filepath
 
     # 3 : load the prelim bed file
@@ -748,7 +748,7 @@ parser.set_defaults(stagger=True, tss=True, slop=True)
 
 args = parser.parse_args()
 
-
+# main.run(args.freq, args.exp, args.outdir, args.len, args.num, args.sd)
 main(
     args.prelm,
     args.bedgraph,
