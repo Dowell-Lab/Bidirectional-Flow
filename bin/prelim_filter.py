@@ -372,25 +372,8 @@ def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, s
                     "GTF file should have strand info in 7th column. Double check input."
                 )
 
-    # Write out base 5' coordinate bedfile in bed3 format
-    with open(str(outdir) + "/tss_single_base.bed", "w") as output:
-        for tss in tss_coord:
-            output.write(
-                str(
-                    str(tss[0])
-                    + "\t"
-                    + str(tss[1])
-                    + "\t"
-                    + str(tss[2])
-                    + "\t"
-                    + str(tss[3])
-                    + "\t"
-                    + str(tss[4])
-                    + "\n"
-                )
-            )
-
-        output.close()    
+    # Write out base 5' coordinate bedfile in bed5 format
+    write_bedfile(str(outdir) + "/tss_single_base.bed", tss_coord, 5)
 
     # Generate filepaths
     tss_bed = str(outdir) + "/tss_" + str(tss_width) + "bp.bed"
@@ -401,7 +384,7 @@ def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, s
 
     # Run bedtools slop to get base TSS regions
     os.system(
-        "bedtools slop -i {} -g {} -b {} > {}".format(
+        "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2 | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
             (outdir + "/tss_single_base.bed"),
             chrom_sizes,
             math.ceil(tss_width/2),
@@ -412,7 +395,7 @@ def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, s
     # If adding slop for merging, run again with extra slop
     if add_slop == True:
         os.system(
-            "bedtools slop -i {} -g {} -b {} > {}".format(
+            "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2 | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
                 (outdir + "/tss_single_base.bed"),
                 chrom_sizes,
                 (math.ceil(tss_width/2) + slop),
@@ -456,34 +439,58 @@ def designate_tss(prelim, tss_bed, sample_name, outdir, tss_slop_bed, add_slop=T
     Path to prelim file
 
     """
-    # set a base name for the output files
+    # set a base name for the output files and set paths
     base_name = str(sample_name)
     prelim_filepath = str(outdir) + "/" + base_name + "_prelim_tss.bed"
+    prelim_subtract = str(outdir) + "/" + base_name + "_prelim_tss_subtract.bed"
 
     os.system(
-        "bedtools subtract -a {} -b {} > {}/{}_prelim_tss_subtract.bed".format(
-            prelim, tss_bed, outdir, base_name
+        "bedtools subtract -a {} -b {} > {}".format(
+            prelim, tss_bed, prelim_subtract
         )
     )
 
+    # rename regions in subtracted file to remain distinct
+    region_names = {}
+    regions_to_write = []
+
+    with open(prelim_subtract) as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+
+            # get individual regions from bed file
+            regions = line.split("\t")
+
+            if regions[3] in region_names.keys():
+                region_names[regions[3]] = int(region_names[regions[3]]) + 1
+                regions[3] = str(regions[3]) + ":" + str(region_names[regions[3]])
+                regions_to_write.append(regions)
+            else:
+                region_names[regions[3]] = 0
+                regions_to_write.append(regions)
+
+    write_bedfile(prelim_subtract, regions_to_write, 5)
+                
     # Concatenate and sort prelim and tss files
     if add_slop == False:
         os.system(
-            "cat {}/{}_prelim_tss_subtract.bed {} | bedtools sort > {}/{}_prelim_tss.bed".format(
-                outdir, base_name, tss_bed, outdir, base_name
+            "cat {} {} | bedtools sort > {}".format(
+                prelim_subtract, tss_bed, prelim_filepath
             )
         )
     else:
         os.system(
-            "cat {}/{}_prelim_tss_subtract.bed {} | bedtools sort > {}/{}_prelim_tss.bed".format(
-                outdir, base_name, tss_slop_bed, outdir, base_name
+            "cat {} {} | bedtools sort > {}".format(
+                prelim_subtract, tss_slop_bed, prelim_filepath
             )
         )
 
     return prelim_filepath
 
 
-def write_bedfile(region_prelim, region_list):
+def write_bedfile(region_prelim, region_list, columns=4):
     """Write output from the input list as a bedfile
     Parameters
     ----------
@@ -491,28 +498,49 @@ def write_bedfile(region_prelim, region_list):
         name of file where bed regions will be written
 
     region_list : list of lists
-        containing regions in BED4 format
+        containing regions in BED4 or BED5 format
+
+    columns: int (default = 4)
 
     Returns
     -------
-    writes 'region_prelim' in BED4 format
+    writes 'region_prelim' in BED4 or BED5 format
     """
 
     with open(region_prelim, "w") as output:
         for prelims in region_list:
-
-            output.write(
-                str(
-                    str(prelims[0])
-                    + "\t"
-                    + str(prelims[1])
-                    + "\t"
-                    + str(prelims[2])
-                    + "\t"
-                    + str(prelims[3])
-                    + "\n"
+            if int(columns) == 4:
+                output.write(
+                    str(
+                        str(prelims[0])
+                        + "\t"
+                        + str(prelims[1])
+                        + "\t"
+                        + str(prelims[2])
+                        + "\t"
+                        + str(prelims[3])
+                        + "\n"
+                    )
                 )
-            )
+            elif int(columns) == 5:
+                output.write(
+                    str(
+                        str(prelims[0])
+                        + "\t"
+                        + str(prelims[1])
+                        + "\t"
+                        + str(prelims[2])
+                        + "\t"
+                        + str(prelims[3])
+                        + "\t"
+                        + str(prelims[4])
+                        + "\n"
+                    )
+                )
+            else:
+                raise IndexError(
+                    "Number of columns not supported for writing. Check input bedfile."
+                )
 
         output.close()
 
@@ -564,6 +592,7 @@ def main(
     write_bedfile(
         "{}/{}_prelim_diced_intermediate.bed".format(output_directory, base_name),
         prelim_diced_list,
+        4,
     )
     
     # 6 : get coverage over prelim regions
@@ -589,6 +618,7 @@ def main(
     write_bedfile(
         "{}/{}_prelim_coverage_filtered_diced.bed".format(output_directory, base_name),
         prelim_filtered_list,
+        4,
     )
 
 
