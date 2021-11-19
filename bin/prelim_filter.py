@@ -748,7 +748,7 @@ parser.set_defaults(stagger=True, tss=True, slop=True)
 
 args = parser.parse_args()
 
-# main.run(args.freq, args.exp, args.outdir, args.len, args.num, args.sd)
+
 main(
     args.prelm,
     args.bedgraph,

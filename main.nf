@@ -477,9 +477,9 @@ process tfit_prelim {
     tag "$prefix"
     memory '70 GB'
     time '6h'
-    cpus 32
     queue 'short'
     validExitStatus 0
+    clusterOptions = '-n 32'
 
     publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
     publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
@@ -513,9 +513,9 @@ process tfit_model {
     tag "$prefix"
     memory '70 GB'
     time '72h'
-    cpus 32
     queue 'long'
     validExitStatus 0
+    clusterOptions = '-n 32'
 
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
