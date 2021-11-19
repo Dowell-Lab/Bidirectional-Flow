@@ -424,88 +424,49 @@ println "[Log 3]: Done Running FStitch\n"
 
 // PART 4: Running Tfit
 
-process tfit {
-    println "[Log 4]: Running Tfit (full)"
-
-    tag "$prefix"
-    memory '70 GB'
-    time '72h'
-    cpus 32
-    queue 'long'
-    validExitStatus 0
-
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
-    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
-
-    when:
-    params.tfit
-
-    input:
-    set val(prefix), file(bg) from tfit_bg
-
-    output:
-    file ("*_prelim_bidir_hits.bed") into tfit_full_prelim_out
-    file ("*_bidir_predictions.bed") into tfit_full_bed_out
-    file ("*.tsv") into tfit_full_model_out
-    file ("*.log") into tfit_full_logs_out
-
-    script:
-        """
-	${params.tfit_run} -t ${params.tfit_path} \
-			   -c ${params.tfit_config} \
-			   -b ${bg} \
-			   -p ${prefix} \
-			   -n 32
-
-        """
-}
-
-println "[Log 4]: Done Running Tfit\n"
-
-// PART 4b: Running individual Tfit components
-
 if (params.prelim_files) {
     tfit_prelim_out = Channel
         .fromPath(params.prelim_files)
         .map { file -> tuple(file.baseName, file)}
-}
+} else {
 
-process tfit_prelim {
-    println "[Log 4b]: Running Tfit prelim"
+    process tfit_prelim {
+        println "[Log 4b]: Running Tfit prelim"
 
-    tag "$prefix"
-    memory '70 GB'
-    time '6h'
-    queue 'short'
-    validExitStatus 0
-    clusterOptions = '-n 32'
+        tag "$prefix"
+        memory '70 GB'
+        time '6h'
+        queue 'short'
+        validExitStatus 0
+        clusterOptions = '-n 32'
 
-    publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
-    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
+        publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
+        publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
 
-    when:
-    params.tfit_prelim || params.tfit || (params.tfit_model && params.prelim_files == false)
+        when:
+        params.tfit_prelim || params.tfit || params.tfit_model
 
-    input:
-    set val(prefix), file(bg) from prelimtfit_bg
+        input:
+        set val(prefix), file(bg) from prelimtfit_bg
 
-    output:
-    file ("*_prelim_bidir_hits.bed") into tfit_prelim_out
-    file ("*.log") into prelimtfit_logs_out
+        output:
+        file ("*.sorted-1_prelim_bidir_hits.bed") into tfit_prelim_out
+        file ("*.log") into prelimtfit_logs_out
 
-    script:
-    """
-    ${params.tfit_prelim_run} -t ${params.tfit_path} \
-                       -c ${params.tfit_config} \
-                       -b ${bg} \
-                       -p ${prefix} \
-                       -n 32
-    """
+        script:
+        """
+        ${params.tfit_prelim_run} -t ${params.tfit_path} \
+                           -c ${params.tfit_config} \
+                           -b ${bg} \
+                           -p ${prefix} \
+                           -n 32
+        """
 
-}    
+    }
 
 println "[Log 4b]: Done Running Tfit prelim\n"
+
+}
 
 process tfit_model {
     println "[Log 4b]: Running Tfit model"
@@ -515,7 +476,7 @@ process tfit_model {
     time '72h'
     queue 'long'
     validExitStatus 0
-    clusterOptions = '-n 32'
+    clusterOptions = '-N 1 -n 32'
 
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
@@ -526,7 +487,7 @@ process tfit_model {
 
     input:
     set val(prefix), file(bg) from modeltfit_bg
-    file(prelim) from tfit_prelim_out
+    set val(prefix), file(prelim) from tfit_prelim_out
 
     output:
     file ("*_prelim_coverage_filtered_diced.bed") into tfit_prelim_filtered
@@ -542,7 +503,9 @@ process tfit_model {
             -p ${prelim} \
             -b ${bg} \
             -s ${prefix} \
-            -o .
+            -o . \
+            -g ${params.filtered_refseq} \
+            -c ${params.chrom_sizes}
 
     ${params.tfit_model_run} -t ${params.tfit_path} \
                         -c ${params.tfit_config} \
