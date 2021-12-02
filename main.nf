@@ -50,6 +50,7 @@ def helpMessage() {
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit bidir. If used, you must also specify the Tfit_path parameter.
         --tfit_prelim		       Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
+        --tfit_split_model             Run Tfit model separately on <5kb prelim regions and 5-10kb prelim regions (with different k parameters). Not compatible with --tfit_model or --tfit flags.
         --tfit_model		       Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
         --prelim_files		       Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
         --dreg                         Produce bigwigs formatted for input to dREG.
@@ -59,7 +60,6 @@ def helpMessage() {
 // Configure Variables
 
 params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
-params.tfit_run = "$baseDir/bin/tfit_run.sh"
 params.tfit_prelim_run = "$baseDir/bin/tfit_prelim.sh"
 params.tfit_model_run = "$baseDir/bin/tfit_model.sh"
 params.prelim_filter = "$baseDir/bin/prelim_filter.py"
@@ -91,6 +91,7 @@ summary['FStitch']          = params.fstitch ? 'YES' : 'NO'
 summary['Tfit']             = params.tfit ? 'YES' : 'NO'
 summary['Tfit prelim']      = params.tfit_prelim ? 'YES' : 'NO'
 summary['Tfit model']       = params.tfit_model ? 'YES' : 'NO'
+summary['Tfit split model'] = params.tfit_split_model ? 'YES' : 'NO'
 summary['Tfit prelim files']	= params.prelim_files ? 'YES' : 'NO'
 summary['dREG']             = params.dreg ? 'YES' : 'NO'
 summary['Gene counting']    = params.gene_count ? 'YES' : 'NO'
@@ -194,7 +195,7 @@ process bam_conversion_tfit {
    tag "$prefix"
 
    when:
-   params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim
+   params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model
 
    input:
    set val(prefix),file(bam) from sorted_bam_file
@@ -232,7 +233,7 @@ process bedgraphs {
     publishDir "${params.outdir}/bedgraphs", mode: 'copy', pattern: "${prefix}.bedGraph"
 
     when:
-    params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim
+    params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model
 
     input:
     set val(prefix), file(bam_file) from bam_for_tfit
@@ -241,7 +242,7 @@ process bedgraphs {
     output:
     set val(prefix), file("${prefix}.pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
     set val(prefix), file("${prefix}.neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
-    set val(prefix), file("${prefix}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, modeltfit_bg, nqc_bg
+    set val(prefix), file("${prefix}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, prelimtfit_split_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, nqc_bg
 
     script:
     if (params.singleEnd) {
@@ -427,11 +428,14 @@ println "[Log 3]: Done Running FStitch\n"
 if (params.prelim_files) {
     tfit_prelim_out = Channel
         .fromPath(params.prelim_files)
-        .map { file -> tuple(file.baseName, file)}
+        .map { file -> tuple((file.simpleName + '.sorted'), file)}
+    tfit_prelim_out_split = Channel
+        .fromPath(params.prelim_files)
+        .map { file -> tuple((file.simpleName + '.sorted'), file)}
 } else {
 
     process tfit_prelim {
-        println "[Log 4b]: Running Tfit prelim"
+        println "[Log 4a]: Running Tfit prelim"
 
         tag "$prefix"
         memory '70 GB'
@@ -444,13 +448,13 @@ if (params.prelim_files) {
         publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
 
         when:
-        params.tfit_prelim || params.tfit || params.tfit_model
+        params.tfit_prelim || params.tfit || params.tfit_model || params.tfit_split_model
 
         input:
         set val(prefix), file(bg) from prelimtfit_bg
 
         output:
-        file ("*.sorted-1_prelim_bidir_hits.bed") into tfit_prelim_out
+        file ("*.sorted-1_prelim_bidir_hits.bed") into tfit_prelim_out, tfit_prelim_out_split
         file ("*.log") into prelimtfit_logs_out
 
         script:
@@ -464,8 +468,127 @@ if (params.prelim_files) {
 
     }
 
-println "[Log 4b]: Done Running Tfit prelim\n"
+println "[Log 4a]: Done Running Tfit prelim\n"
 
+}
+
+process tfit_split_prelim {
+    println "[Log 4b]: Splitting and processing prelim file"
+
+    tag "$prefix"
+    memory '20 GB'
+    time '1h'
+    queue 'short'
+    validExitStatus 0
+
+    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
+
+    when:
+    params.tfit_split_model
+
+    input:
+    set val(prefix), file(bg) from prelimtfit_split_bg
+    set val(prefix), file(prelim) from tfit_prelim_out_split
+
+    output:
+    set val(prefix), file ("*5kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_out_split_max5kb
+    set val(prefix), file ("*10kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_out_split_max10kb
+
+    module 'python/3.6.3'
+
+    script:
+    """
+    python3 ${params.prelim_filter} \
+            -p ${prelim} \
+            -b ${bg} \
+            -s ${prefix} \
+            -o . \
+            -g ${params.filtered_refseq} \
+            -c ${params.chrom_sizes}
+
+    awk '{if (\$3-\$2 < 5000) print \$0}' \
+        ${prefix}_prelim_coverage_filtered_diced.bed \
+        > ${prefix}_max5kb_prelim_coverage_filtered_diced.bed
+
+    awk '{if (\$3-\$2 >= 5000) print \$0}' \
+        ${prefix}_prelim_coverage_filtered_diced.bed \
+        > ${prefix}_max10kb_prelim_coverage_filtered_diced.bed
+    
+    """
+}
+
+process tfit_split_model_max5kb {
+    println "[Log 4b]: Running Tfit model on <5kb prelim regions (maxk=2)"
+
+    tag "$prefix"
+    memory '70 GB'
+    time '60h'
+    queue 'long'
+    validExitStatus 0
+    clusterOptions = '-N 1 -n 32'
+
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
+    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+
+    when:
+    params.tfit_split_model
+
+    input:
+    set val(prefix), file(bg) from modeltfit_bg_split_max5kb
+    set val(prefix), file(prelim_max5kb) from tfit_prelim_out_split_max5kb
+
+    output:
+    set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max5kb
+    file ("*.tsv") into tfit_model_model_out_split_max5kb
+    file ("*.log") into tfit_model_logs_out_split_max5kb
+
+    script:
+    """
+    ${params.tfit_model_run} -t ${params.tfit_path} \
+                        -c ${params.tfit_config_k2} \
+                        -b ${bg} \
+                        -k ${prelim_max5kb} \
+                        -p ${prefix}_max5kb \
+                        -n 32
+
+    """
+}
+
+process tfit_split_model_max10kb {
+    println "[Log 4b]: Running Tfit model on 5-10kb prelim regions (maxk=5)"
+
+    tag "$prefix"
+    memory '70 GB'
+    time '60h'
+    queue 'long'
+    validExitStatus 0
+    clusterOptions = '-N 1 -n 32'
+
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
+    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+
+    when:
+    params.tfit_split_model
+
+    input:
+    set val(prefix), file(bg) from modeltfit_bg_split_max10kb
+    set val(prefix), file(prelim_max10kb) from tfit_prelim_out_split_max10kb
+
+    output:
+    set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max10kb
+    file ("*.tsv") into tfit_model_model_out_split_max10kb
+    file ("*.log") into tfit_model_logs_out_split_max10kb
+
+    script:
+    """
+    ${params.tfit_model_run} -t ${params.tfit_path} \
+                        -c ${params.tfit_config} \
+                        -b ${bg} \
+                        -k ${prelim_max10kb} \
+                        -p ${prefix}_max10kb \
+                        -n 32
+
+    """
 }
 
 process tfit_model {
@@ -491,7 +614,7 @@ process tfit_model {
 
     output:
     file ("*_prelim_coverage_filtered_diced.bed") into tfit_prelim_filtered
-    file ("*_bidir_predictions.bed") into tfit_model_bed_out
+    set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out
     file ("*.tsv") into tfit_model_model_out
     file ("*.log") into tfit_model_logs_out
 
@@ -516,6 +639,7 @@ process tfit_model {
 
     """
 }
+
 println "[Log 4b]: Done Running Tfit model\n"
 
 
