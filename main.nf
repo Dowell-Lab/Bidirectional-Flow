@@ -50,9 +50,10 @@ def helpMessage() {
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit bidir. If used, you must also specify the Tfit_path parameter.
         --tfit_prelim		       Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
-        --tfit_split_model             Run Tfit model separately on <5kb prelim regions and 5-10kb prelim regions (with different k parameters). Not compatible with --tfit_model or --tfit flags.
+        --tfit_split_model             Run Tfit model separately on <5kb prelim regions and 5-10kb prelim regions (with different k parameters). Not compatible with --tfit_model or --tfit flags, or --prelim_process=false
         --tfit_model		       Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
         --prelim_files		       Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
+        --prelim_process               Run the prelim processing step for Tfit (default true)
         --dreg                         Produce bigwigs formatted for input to dREG.
     """.stripIndent()
 }
@@ -93,6 +94,7 @@ summary['Tfit prelim']      = params.tfit_prelim ? 'YES' : 'NO'
 summary['Tfit model']       = params.tfit_model ? 'YES' : 'NO'
 summary['Tfit split model'] = params.tfit_split_model ? 'YES' : 'NO'
 summary['Tfit prelim files']	= params.prelim_files ? 'YES' : 'NO'
+summary['Process Tfit prelims'] = params.prelim_process ? 'YES' : 'NO'
 summary['dREG']             = params.dreg ? 'YES' : 'NO'
 summary['Gene counting']    = params.gene_count ? 'YES' : 'NO'
 if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
@@ -117,7 +119,6 @@ println "\nSTARTING PIPELINE"
 println "[Log 0]: Getting software versions"
 
 process get_software_versions {
-    validExitStatus 0,1,127
     time '1h'
 
     output:
@@ -166,13 +167,13 @@ if (params.crams) {
      tag "$prefix"
 
      input:
-     set val(prefix),file(cram) from cramfiles
+     tuple val(prefix),file(cram) from cramfiles
 
      output:
-     set val(prefix), file("${prefix}.sorted.bam") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting, bam_for_bidir_counting
-     set val(prefix), file("${prefix}.sorted.bam.bai") into sorted_bam_index, bam_index_for_dreg, bam_index_for_gene_counting, bam_index_for_bidir_counting
+     tuple val(prefix), file("${prefix}.sorted.bam"), file("${prefix}.sorted.bam.bai") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting, bam_for_bidir_counting
 
      module 'samtools'
+
      script:
      """
      samtools view -@ 16 -b -1 -T ${params.genome} ${cram} > ${prefix}.sorted.bam
@@ -198,11 +199,10 @@ process bam_conversion_tfit {
    params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model
 
    input:
-   set val(prefix),file(bam) from sorted_bam_file
+   tuple val(prefix), file(bam), file(index) from sorted_bam_file
 
    output:
-   set val(prefix), file("${prefix}.mmfilt.sorted.bam") into bam_for_tfit
-   set val(prefix), file("${prefix}.mmfilt.sorted.bam.bai") into bam_index_for_tfit
+   tuple val(prefix), file("${prefix}.mmfilt.sorted.bam"), file("${prefix}.mmfilt.sorted.bam.bai") into bam_for_tfit
 
    module 'samtools'
    script:
@@ -224,7 +224,6 @@ process bedgraphs {
     println "[Log 2]: Genome information ..... $params.genome "
     println "[Log 2]: Chromosome Sizes ....... $params.chrom_sizes"
 
-    validExitStatus 0,143
     tag "$prefix"
     memory '40 GB'
     queue 'short'
@@ -236,13 +235,11 @@ process bedgraphs {
     params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model
 
     input:
-    set val(prefix), file(bam_file) from bam_for_tfit
-    set val(prefix), file(bam_indices) from bam_index_for_tfit
+    tuple val(prefix), file(bam_file), file(index) from bam_for_tfit
 
     output:
-    set val(prefix), file("${prefix}.pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
-    set val(prefix), file("${prefix}.neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
-    set val(prefix), file("${prefix}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, prelimtfit_split_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, nqc_bg
+    tuple val(prefix), file("${prefix}.bedGraph"), file("${prefix}.pos.bedGraph"), file("${prefix}.neg.bedGraph") into fstitch_bg
+    tuple val(prefix), file("${prefix}.bedGraph") into prelimtfit_bg, prelimtfit_process_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, nqc_bg
 
     script:
     if (params.singleEnd) {
@@ -354,8 +351,6 @@ process FStitch {
     memory '50 GB'
     queue 'short'
     time '4h'
-    validExitStatus 0,134
-    errorStrategy 'ignore'
 
     publishDir "${params.outdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
     publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "${prefix}.fstitch_seg.ON.merged.bed"
@@ -370,14 +365,12 @@ process FStitch {
     params.fstitch
 
     input:
-    set val(prefix), file(bg) from fstitch_bg
-    set val(prefix), file(pos_bg) from pos_fstitch_bg
-    set val(prefix), file(neg_bg) from neg_fstitch_bg
+    tuple val(prefix), file(bg), file(pos_bg), file(neg_bg) from fstitch_bg
 
     output:
     file ("*.hmminfo") into fs_train_out
-    set val(prefix), file ("*.fstitch_seg.ON.merged.bed") into fs_seg_out
-    set val(prefix), file ("*.fstitch_bidir.bed") into fs_bidir_out
+    tuple val(prefix), file ("*.fstitch_seg.ON.merged.bed") into fs_seg_out
+    tuple val(prefix), file ("*.fstitch_bidir.bed") into fs_bidir_out
     file ("*fstitch_bidir.{short,long}.bed") into fs_bidir_short_long_out
     file ("*.html") into fs_bidir_plot_out
     file ("*.txt") into fs_bidir_stats_out
@@ -424,14 +417,14 @@ println "[Log 3]: Done Running FStitch\n"
 
 
 // PART 4: Running Tfit
+//Load in external prelim files
 
 if (params.prelim_files) {
     tfit_prelim_out = Channel
         .fromPath(params.prelim_files)
         .map { file -> tuple((file.simpleName + '.sorted'), file)}
-    tfit_prelim_out_split = Channel
-        .fromPath(params.prelim_files)
-        .map { file -> tuple((file.simpleName + '.sorted'), file)}
+
+// Or run Tfit bidir to make prelim files
 } else {
 
     process tfit_prelim {
@@ -441,7 +434,6 @@ if (params.prelim_files) {
         memory '70 GB'
         time '6h'
         queue 'short'
-        validExitStatus 0
         clusterOptions = '-n 32'
 
         publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
@@ -451,10 +443,10 @@ if (params.prelim_files) {
         params.tfit_prelim || params.tfit || params.tfit_model || params.tfit_split_model
 
         input:
-        set val(prefix), file(bg) from prelimtfit_bg
+        tuple val(prefix), file(bg) from prelimtfit_bg
 
         output:
-        file ("*.sorted-1_prelim_bidir_hits.bed") into tfit_prelim_out, tfit_prelim_out_split
+        tuple val(prefix), file ("*.sorted-1_prelim_bidir_hits.bed") into tfit_prelim_out
         file ("*.log") into prelimtfit_logs_out
 
         script:
@@ -472,49 +464,60 @@ println "[Log 4a]: Done Running Tfit prelim\n"
 
 }
 
-process tfit_split_prelim {
-    println "[Log 4b]: Splitting and processing prelim file"
+//Combine files with same prefix
+if (params.prelim_process) {
+    tfit_prelim_bg_out_preprocess = prelimtfit_process_bg
+        .join(tfit_prelim_out)
 
-    tag "$prefix"
-    memory '20 GB'
-    time '1h'
-    queue 'short'
-    validExitStatus 0
+    process tfit_prelim_process {
+        println "[Log 4b]: Processing prelim file"
 
-    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
+        tag "$prefix"
+        memory '20 GB'
+        time '1h'
+        queue 'short'
 
-    when:
-    params.tfit_split_model
+        publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
 
-    input:
-    set val(prefix), file(bg) from prelimtfit_split_bg
-    set val(prefix), file(prelim) from tfit_prelim_out_split
+        when:
+        params.tfit_split_model || params.prelim_process
 
-    output:
-    set val(prefix), file ("*5kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_out_split_max5kb
-    set val(prefix), file ("*10kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_out_split_max10kb
+        input:
+        tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out_preprocess
 
-    module 'python/3.6.3'
+        output:
+        tuple val(prefix), file(bg), file ("*sorted_prelim_coverage_filtered_diced.bed") into tfit_prelim_bg_out
+        tuple val(prefix), file(bg), file ("*5kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_bg_out_split_max5kb
+        tuple val(prefix), file(bg), file ("*10kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_bg_out_split_max10kb
 
-    script:
-    """
-    python3 ${params.prelim_filter} \
-            -p ${prelim} \
-            -b ${bg} \
-            -s ${prefix} \
-            -o . \
-            -g ${params.filtered_refseq} \
-            -c ${params.chrom_sizes}
+        module 'python/3.6.3'
 
-    awk '{if (\$3-\$2 < 5000) print \$0}' \
-        ${prefix}_prelim_coverage_filtered_diced.bed \
-        > ${prefix}_max5kb_prelim_coverage_filtered_diced.bed
+        script:
+        """
+        python3 ${params.prelim_filter} \
+                -p ${prelim} \
+                -b ${bg} \
+                -s ${prefix} \
+                -o . \
+                -g ${params.filtered_refseq} \
+                -c ${params.chrom_sizes}
 
-    awk '{if (\$3-\$2 >= 5000) print \$0}' \
-        ${prefix}_prelim_coverage_filtered_diced.bed \
-        > ${prefix}_max10kb_prelim_coverage_filtered_diced.bed
+        awk '{if (\$3-\$2 < 5000) print \$0}' \
+            ${prefix}_prelim_coverage_filtered_diced.bed \
+            > ${prefix}_max5kb_prelim_coverage_filtered_diced.bed
+
+        awk '{if (\$3-\$2 >= 5000) print \$0}' \
+            ${prefix}_prelim_coverage_filtered_diced.bed \
+            > ${prefix}_max10kb_prelim_coverage_filtered_diced.bed
     
-    """
+        """
+    }
+
+} else {
+
+    tfit_prelim_bg_out = prelimtfit_process_bg
+        .join(tfit_prelim_out)
+
 }
 
 process tfit_split_model_max5kb {
@@ -524,7 +527,6 @@ process tfit_split_model_max5kb {
     memory '70 GB'
     time '60h'
     queue 'long'
-    validExitStatus 0
     clusterOptions = '-N 1 -n 32'
 
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
@@ -534,11 +536,10 @@ process tfit_split_model_max5kb {
     params.tfit_split_model
 
     input:
-    set val(prefix), file(bg) from modeltfit_bg_split_max5kb
-    set val(prefix), file(prelim_max5kb) from tfit_prelim_out_split_max5kb
+    tuple val(prefix), file(bg), file(prelim_max5kb) from tfit_prelim_bg_out_split_max5kb
 
     output:
-    set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max5kb
+    tuple val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max5kb
     file ("*.tsv") into tfit_model_model_out_split_max5kb
     file ("*.log") into tfit_model_logs_out_split_max5kb
 
@@ -561,7 +562,6 @@ process tfit_split_model_max10kb {
     memory '70 GB'
     time '60h'
     queue 'long'
-    validExitStatus 0
     clusterOptions = '-N 1 -n 32'
 
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
@@ -571,8 +571,7 @@ process tfit_split_model_max10kb {
     params.tfit_split_model
 
     input:
-    set val(prefix), file(bg) from modeltfit_bg_split_max10kb
-    set val(prefix), file(prelim_max10kb) from tfit_prelim_out_split_max10kb
+    tuple val(prefix), file(bg), file(prelim_max10kb) from tfit_prelim_bg_out_split_max10kb
 
     output:
     set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max10kb
@@ -598,7 +597,6 @@ process tfit_model {
     memory '70 GB'
     time '72h'
     queue 'long'
-    validExitStatus 0
     clusterOptions = '-N 1 -n 32'
 
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
@@ -609,12 +607,11 @@ process tfit_model {
     params.tfit_model || params.tfit
 
     input:
-    set val(prefix), file(bg) from modeltfit_bg
-    set val(prefix), file(prelim) from tfit_prelim_out
+    tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out
 
     output:
     file ("*_prelim_coverage_filtered_diced.bed") into tfit_prelim_filtered
-    set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out
+    tuple val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out
     file ("*.tsv") into tfit_model_model_out
     file ("*.log") into tfit_model_logs_out
 
@@ -622,18 +619,10 @@ process tfit_model {
 
     script:
     """
-    python3 ${params.prelim_filter} \
-            -p ${prelim} \
-            -b ${bg} \
-            -s ${prefix} \
-            -o . \
-            -g ${params.filtered_refseq} \
-            -c ${params.chrom_sizes}
-
     ${params.tfit_model_run} -t ${params.tfit_path} \
                         -c ${params.tfit_config} \
                         -b ${bg} \
-                        -k ${prefix}_prelim_coverage_filtered_diced.bed \
+                        -k ${prelim} \
                         -p ${prefix} \
                         -n 32
 
@@ -661,124 +650,120 @@ process dreg_prep {
     params.dreg
 
     input:
-    set val(prefix), file(bam_file) from bam_for_dreg
-    set val(prefix), file(bam_index) from bam_index_for_dreg
+    set val(prefix), file(bam_file), file(index) from bam_for_dreg
 
     output:
-    set val(prefix), file("*.bw") into dreg_bigwig
-    set val(prefix), file("${prefix}.pos.bw") into pos_dreg_bw
-    set val(prefix), file("${prefix}.neg.bw") into neg_dreg_bw
+    tuple val(prefix), file("*.bw"), file("${prefix}.pos.bw"), file("${prefix}.neg.bw") into dreg_bigwig
 
     script:
     if (params.singleEnd) {
-    """
-    echo "Creating BigWigs suitable as inputs to dREG"
+        """
+        echo "Creating BigWigs suitable as inputs to dREG"
 
-    export CRAM_REFERENCE=${params.genome}
+        export CRAM_REFERENCE=${params.genome}
 
-    bamToBed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
-    awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
-    > ${prefix}.dreg.bed
-    sortBed -i ${prefix}.dreg.bed > ${prefix}.dreg.sort.bed
+        bamToBed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
+        awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
+        > ${prefix}.dreg.bed
+        sortBed -i ${prefix}.dreg.bed > ${prefix}.dreg.sort.bed
 
-    echo "positive strand processed to bedGraph"
+        echo "positive strand processed to bedGraph"
 
-    bedtools genomecov \
-            -bg \
-            -i ${prefix}.dreg.sort.bed \
-            -g ${params.chrom_sizes} \
-            -strand + \
-            > ${prefix}.pos.bedGraph
+        bedtools genomecov \
+                -bg \
+                -i ${prefix}.dreg.sort.bed \
+                -g ${params.chrom_sizes} \
+                -strand + \
+                > ${prefix}.pos.bedGraph
 
-    sortBed \
-            -i ${prefix}.pos.bedGraph \
-            > ${prefix}.pos.sort.bedGraph
+        sortBed \
+                -i ${prefix}.pos.bedGraph \
+                > ${prefix}.pos.sort.bedGraph
 
-    bedtools genomecov \
-            -bg \
-            -i ${prefix}.dreg.sort.bed \
-            -g ${params.chrom_sizes} \
-            -strand - \
-            | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${prefix}.neg.bedGraph
+        bedtools genomecov \
+                -bg \
+                -i ${prefix}.dreg.sort.bed \
+                -g ${params.chrom_sizes} \
+                -strand - \
+                | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${prefix}.neg.bedGraph
 
-    sortBed \
-            -i ${prefix}.neg.bedGraph \
-            > ${prefix}.neg.sort.bedGraph
+        sortBed \
+                -i ${prefix}.neg.bedGraph \
+                > ${prefix}.neg.sort.bedGraph
 
-    echo "negative strand processed to bedGraph"
+        echo "negative strand processed to bedGraph"
 
-    ${params.bedGraphToBigWig} ${prefix}.pos.sort.bedGraph ${params.chrom_sizes} ${prefix}.pos.bw
-    ${params.bedGraphToBigWig} ${prefix}.neg.sort.bedGraph ${params.chrom_sizes} ${prefix}.neg.bw
+        ${params.bedGraphToBigWig} ${prefix}.pos.sort.bedGraph ${params.chrom_sizes} ${prefix}.pos.bw
+        ${params.bedGraphToBigWig} ${prefix}.neg.sort.bedGraph ${params.chrom_sizes} ${prefix}.neg.bw
 
-    echo "bedGraph to bigwig done"
-    """
-  } else {
-    if (params.r1_five_prime) {
-      """
-      samtools view -@ 16 -bf 0x2 ${bam_file} | samtools sort -n -@ 16 \
-        > ${prefix}.dreg.bam
-
-      bedtools bamtobed -bedpe -mate1 -i ${prefix}.dreg.bam \
-        | awk 'BEGIN{OFS="\t"} (\$9 == "+") {print \$1,\$2,\$2+1,\$7,\$8,\$9}; (\$9 == "-") {print \$1,\$3-1,\$3,\$7,\$8,\$9}' \
-        | sort -k 1,1 -k 2,2n > ${prefix}.dreg.sort.bed
-
-      bedtools genomecov -bg \
-        -i ${prefix}.dreg.sort.bed \
-        -g ${params.chrom_sizes} \
-        -strand + \
-        > ${prefix}.pos.bedGraph
-
-      bedtools genomecov -bg \
-        -i ${prefix}.dreg.sort.bed \
-        -g ${params.chrom_sizes} \
-        -strand - \
-        > ${prefix}.neg.noinv.bedGraph
-
-      cat ${prefix}.neg.noinv.bedGraph \
-        | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' \
-        > ${prefix}.neg.bedGraph
-
-      ${params.bedGraphToBigWig} ${prefix}.pos.bedGraph \
-        ${params.chrom_sizes} ${prefix}.pos.bw
-
-      ${params.bedGraphToBigWig} ${prefix}.neg.bedGraph \
-        ${params.chrom_sizes} ${prefix}.neg.bw
-
-      """
+        echo "bedGraph to bigwig done"
+        """
     } else {
-      """
-      samtools view -@ 16 -bf 0x2 ${bam_file} | samtools sort -n -@ 16 \
-        > ${prefix}.dreg.bam
+        if (params.r1_five_prime) {
+            """
+            samtools view -@ 16 -bf 0x2 ${bam_file} | samtools sort -n -@ 16 \
+            > ${prefix}.dreg.bam
 
-      bedtools bamtobed -bedpe -mate1 -i ${prefix}.dreg.bam \
-        | awk 'BEGIN{OFS="\t"} (\$10 == "+") {print \$1,\$5,\$5+1,\$7,\$8,\$10}; (\$10 == "-") {print \$1,\$6-1,\$6,\$7,\$8,\$10}' \
-        | sort -k 1,1 -k 2,2n > ${prefix}.dreg.sort.bed
+            bedtools bamtobed -bedpe -mate1 -i ${prefix}.dreg.bam \
+              | awk 'BEGIN{OFS="\t"} (\$9 == "+") {print \$1,\$2,\$2+1,\$7,\$8,\$9}; (\$9 == "-") {print \$1,\$3-1,\$3,\$7,\$8,\$9}' \
+              | sort -k 1,1 -k 2,2n > ${prefix}.dreg.sort.bed
 
-      bedtools genomecov -bg \
-        -i ${prefix}.dreg.sort.bed \
-        -g ${params.chrom_sizes} \
-        -strand + \
-        > ${prefix}.pos.bedGraph
+            bedtools genomecov -bg \
+              -i ${prefix}.dreg.sort.bed \
+              -g ${params.chrom_sizes} \
+              -strand + \
+              > ${prefix}.pos.bedGraph
 
-      bedtools genomecov -bg \
-        -i ${prefix}.dreg.sort.bed \
-        -g ${params.chrom_sizes} \
-        -strand - \
-        > ${prefix}.neg.noinv.bedGraph
+            bedtools genomecov -bg \
+              -i ${prefix}.dreg.sort.bed \
+              -g ${params.chrom_sizes} \
+              -strand - \
+              > ${prefix}.neg.noinv.bedGraph
 
-      cat ${prefix}.neg.noinv.bedGraph \
-        | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' \
-        > ${prefix}.neg.bedGraph
+            cat ${prefix}.neg.noinv.bedGraph \
+              | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' \
+              > ${prefix}.neg.bedGraph
 
-      ${params.bedGraphToBigWig} ${prefix}.pos.bedGraph \
-        ${params.chrom_sizes} ${prefix}.pos.bw
+            ${params.bedGraphToBigWig} ${prefix}.pos.bedGraph \
+              ${params.chrom_sizes} ${prefix}.pos.bw
 
-      ${params.bedGraphToBigWig} ${prefix}.neg.bedGraph \
-        ${params.chrom_sizes} ${prefix}.neg.bw
-      """
+            ${params.bedGraphToBigWig} ${prefix}.neg.bedGraph \
+              ${params.chrom_sizes} ${prefix}.neg.bw
+
+            """
+        } else {
+            """
+            samtools view -@ 16 -bf 0x2 ${bam_file} | samtools sort -n -@ 16 \
+              > ${prefix}.dreg.bam
+
+            bedtools bamtobed -bedpe -mate1 -i ${prefix}.dreg.bam \
+              | awk 'BEGIN{OFS="\t"} (\$10 == "+") {print \$1,\$5,\$5+1,\$7,\$8,\$10}; (\$10 == "-") {print \$1,\$6-1,\$6,\$7,\$8,\$10}' \
+              | sort -k 1,1 -k 2,2n > ${prefix}.dreg.sort.bed
+
+            bedtools genomecov -bg \
+              -i ${prefix}.dreg.sort.bed \
+              -g ${params.chrom_sizes} \
+              -strand + \
+              > ${prefix}.pos.bedGraph
+
+            bedtools genomecov -bg \
+              -i ${prefix}.dreg.sort.bed \
+              -g ${params.chrom_sizes} \
+              -strand - \
+              > ${prefix}.neg.noinv.bedGraph
+
+            cat ${prefix}.neg.noinv.bedGraph \
+              | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' \
+              > ${prefix}.neg.bedGraph
+
+            ${params.bedGraphToBigWig} ${prefix}.pos.bedGraph \
+              ${params.chrom_sizes} ${prefix}.pos.bw
+
+            ${params.bedGraphToBigWig} ${prefix}.neg.bedGraph \
+              ${params.chrom_sizes} ${prefix}.neg.bw
+            """
+        }
     }
-}
-
 }
 
 println "[Log 5]: Bigwig files are ready \n"
@@ -796,7 +781,6 @@ process dreg_run {
     cpus 4
     queue 'titan'
     clusterOptions '--gres=gpu'
-    validExitStatus 0
 
     publishDir "${params.outdir}/dreg/", mode: 'copy', pattern: "*dREG*"
 
@@ -804,11 +788,10 @@ process dreg_run {
     params.dreg
 
     input:
-    set val(prefix), file(pos_bw) from pos_dreg_bw
-    set val(prefix), file(neg_bw) from neg_dreg_bw
+    tuple val(prefix), file(bigwig), file(pos_bw), file(neg_bw) from dreg_bigwig
 
     output:
-    set val(prefix), file ("${prefix}.*") into dREG_out
+    tuple val(prefix), file ("${prefix}.*") into dREG_out
 
     module 'samtools/1.10'
 
@@ -817,7 +800,7 @@ process dreg_run {
         bash ${params.dreg_path} \
 	     ${pos_bw} \
 	     ${neg_bw} \
-	     $prefix \
+	     ${prefix} \
 	     ${params.dreg_train} \
 	     4 1 
         """
@@ -833,7 +816,6 @@ process gene_count {
     time '3h'
     cpus 8
     queue 'short'
-    validExitStatus 0
 
     publishDir "${params.outdir}/featurecounts_genes/", mode: 'copy', pattern: "*gene_counts.txt"
 
@@ -841,11 +823,10 @@ process gene_count {
     params.gene_count
 
     input:
-    set val(prefix), file(bam_file) from bam_for_gene_counting
-    set val(prefix), file(bam_indices) from bam_index_for_gene_counting
+    tuple val(prefix), file(bam_file), file(index) from bam_for_gene_counting
 
     output:
-    set val(prefix), file ("*gene_counts.txt") into gene_count_out
+    tuple val(prefix), file ("*gene_counts.txt") into gene_count_out
 
     script:
     if (params.singleEnd) {
@@ -993,7 +974,6 @@ process bidir_count {
     time '3h'
     cpus 8
     queue 'short'
-    validExitStatus 0
 
     publishDir "${params.outdir}/featurecounts_bidirs/", mode: 'copy', pattern: "*bidir_counts.txt"
 
@@ -1001,11 +981,10 @@ process bidir_count {
     params.bidir_count
 
     input:
-    set val(prefix), file(bam_file) from bam_for_bidir_counting
-    set val(prefix), file(bam_indices) from bam_index_for_bidir_counting
+    tuple val(prefix), file(bam_file), file(index) from bam_for_bidir_counting
 
     output:
-    set val(prefix), file ("*bidir_counts.txt") into bidir_count_out
+    tuple val(prefix), file ("*bidir_counts.txt") into bidir_count_out
 
     script:
     if (params.singleEnd) {
