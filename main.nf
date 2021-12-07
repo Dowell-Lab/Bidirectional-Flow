@@ -653,7 +653,7 @@ process dreg_prep {
     set val(prefix), file(bam_file), file(index) from bam_for_dreg
 
     output:
-    tuple val(prefix), file("*.bw"), file("${prefix}.pos.bw"), file("${prefix}.neg.bw") into dreg_bigwig
+    tuple val(prefix), file("${prefix}.pos.bw"), file("${prefix}.neg.bw") into dreg_bigwig
 
     script:
     if (params.singleEnd) {
@@ -788,7 +788,7 @@ process dreg_run {
     params.dreg
 
     input:
-    tuple val(prefix), file(bigwig), file(pos_bw), file(neg_bw) from dreg_bigwig
+    tuple val(prefix), file(pos_bw), file(neg_bw) from dreg_bigwig
 
     output:
     tuple val(prefix), file ("${prefix}.*") into dREG_out
