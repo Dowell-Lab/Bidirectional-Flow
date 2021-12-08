@@ -172,8 +172,6 @@ if (params.crams) {
      output:
      tuple val(prefix), file("${prefix}.sorted.bam"), file("${prefix}.sorted.bam.bai") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting, bam_for_bidir_counting
 
-     module 'samtools'
-
      script:
      """
      samtools view -@ 16 -b -1 -T ${params.genome} ${cram} > ${prefix}.sorted.bam
@@ -204,7 +202,6 @@ process bam_conversion_tfit {
    output:
    tuple val(prefix), file("${prefix}.mmfilt.sorted.bam"), file("${prefix}.mmfilt.sorted.bam.bai") into bam_for_tfit
 
-   module 'samtools'
    script:
    """
    samtools view -@ 16 -h -q 1 ${bam} | \
@@ -239,7 +236,7 @@ process bedgraphs {
 
     output:
     tuple val(prefix), file("${prefix}.bedGraph"), file("${prefix}.pos.bedGraph"), file("${prefix}.neg.bedGraph") into fstitch_bg
-    tuple val(prefix), file("${prefix}.bedGraph") into prelimtfit_bg, prelimtfit_process_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, nqc_bg
+    tuple val(prefix), file("${prefix}.bedGraph") into prelimtfit_bg, prelimtfit_process_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, post_tfit_bg_split, nqc_bg
 
     script:
     if (params.singleEnd) {
@@ -490,8 +487,6 @@ if (params.prelim_process) {
         tuple val(prefix), file(bg), file ("*5kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_bg_out_split_max5kb
         tuple val(prefix), file(bg), file ("*10kb_prelim_coverage_filtered_diced.bed") into tfit_prelim_bg_out_split_max10kb
 
-        module 'python/3.6.3'
-
         script:
         """
         python3 ${params.prelim_filter} \
@@ -590,6 +585,39 @@ process tfit_split_model_max10kb {
     """
 }
 
+if (params.tfit_split_model) {
+    tfit_split_results = post_tfit_bg_split
+        .join(tfit_model_bed_out_split_max5kb)
+        .join(tfit_model_bed_out_split_max10kb)
+
+    process tfit_split_cat {
+        tag "$prefix"
+        memory '4 GB'
+        time '1h'
+        queue 'short'
+
+        publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*{split_bidir_predictions.bed,split_bidir_cov_filtered.bed}"
+
+        when:
+        params.tfit_split_model
+
+        input:
+        tuple val(prefix), file(bg), file(out_max5kb), file(out_max10kb) from tfit_split_results
+
+        output:
+        set val(prefix), file ("*split_bidir_predictions.bed"), file("*split_bidir_cov_filtered.bed") into tfit_model_split_out
+
+        script:
+        """
+        grep -v '#' ${out_max5kb} > max5kb_noheader.bed
+        grep -v '#' ${out_max10kb} > max10kb_noheader.bed
+        cat max5kb_noheader.bed max10kb_noheader.bed | bedtools sort > ${prefix}_split_bidir_predictions.bed
+        bedtools coverage -a ${prefix}_split_bidir_predictions.bed -b ${bg} > ${prefix}_split_bidir_cov.bed
+        awk '{if (\$5 > 9) print \$0}' ${prefix}_split_bidir_cov.bed > ${prefix}_split_bidir_cov_filtered.bed
+        """
+    }
+}
+
 process tfit_model {
     println "[Log 4b]: Running Tfit model"
 
@@ -599,7 +627,7 @@ process tfit_model {
     queue 'long'
     clusterOptions = '-N 1 -n 32'
 
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*{_bidir_predictions.bed,_bidir_cov_filtered.bed}"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
     publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
     
@@ -611,11 +639,9 @@ process tfit_model {
 
     output:
     file ("*_prelim_coverage_filtered_diced.bed") into tfit_prelim_filtered
-    tuple val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out
+    tuple val(prefix), file ("*_bidir_predictions.bed"), file("*_bidir_cov_filtered.bed") into tfit_model_bed_out
     file ("*.tsv") into tfit_model_model_out
     file ("*.log") into tfit_model_logs_out
-
-    module 'python/3.6.3'
 
     script:
     """
@@ -626,6 +652,8 @@ process tfit_model {
                         -p ${prefix} \
                         -n 32
 
+    bedtools coverage -a ${prefix}-1_bidir_predictions.bed -b ${bg} > ${prefix}_bidir_cov.bed
+    awk '{if (\$5 > 9) print \$0}' ${prefix}_bidir_cov.bed > ${prefix}_bidir_cov_filtered.bed
     """
 }
 
@@ -792,8 +820,6 @@ process dreg_run {
 
     output:
     tuple val(prefix), file ("${prefix}.*") into dREG_out
-
-    module 'samtools/1.10'
 
     script:
         """
