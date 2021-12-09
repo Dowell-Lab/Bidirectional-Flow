@@ -462,12 +462,12 @@ println "[Log 4a]: Done Running Tfit prelim\n"
 }
 
 //Combine files with same prefix
-if (params.prelim_process) {
+if (params.tfit_split_model) {
     tfit_prelim_bg_out_preprocess = prelimtfit_process_bg
         .join(tfit_prelim_out)
 
-    process tfit_prelim_process {
-        println "[Log 4b]: Processing prelim file"
+    process tfit_prelim_process_split {
+        println "[Log 4b]: Processing prelim file for split model run"
 
         tag "$prefix"
         memory '20 GB'
@@ -477,7 +477,7 @@ if (params.prelim_process) {
         publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
 
         when:
-        params.tfit_split_model || params.prelim_process
+        params.tfit_split_model
 
         input:
         tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out_preprocess
@@ -508,84 +508,76 @@ if (params.prelim_process) {
         """
     }
 
-} else {
+    process tfit_split_model_max5kb {
+        println "[Log 4b]: Running Tfit model on <5kb prelim regions (maxk=2)"
 
-    tfit_prelim_bg_out = prelimtfit_process_bg
-        .join(tfit_prelim_out)
+        tag "$prefix"
+        memory '70 GB'
+        time '60h'
+        queue 'long'
+        clusterOptions = '-N 1 -n 32'
 
-}
+        publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
+        publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
 
-process tfit_split_model_max5kb {
-    println "[Log 4b]: Running Tfit model on <5kb prelim regions (maxk=2)"
+        when:
+        params.tfit_split_model
 
-    tag "$prefix"
-    memory '70 GB'
-    time '60h'
-    queue 'long'
-    clusterOptions = '-N 1 -n 32'
+        input:
+        tuple val(prefix), file(bg), file(prelim_max5kb) from tfit_prelim_bg_out_split_max5kb
 
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
-    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+        output:
+        tuple val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max5kb
+        file ("*.tsv") into tfit_model_model_out_split_max5kb
+        file ("*.log") into tfit_model_logs_out_split_max5kb
 
-    when:
-    params.tfit_split_model
+        script:
+        """
+        ${params.tfit_model_run} -t ${params.tfit_path} \
+                            -c ${params.tfit_config_k2} \
+                            -b ${bg} \
+                            -k ${prelim_max5kb} \
+                            -p ${prefix}_max5kb \
+                            -n 32
 
-    input:
-    tuple val(prefix), file(bg), file(prelim_max5kb) from tfit_prelim_bg_out_split_max5kb
+        """
+    }
 
-    output:
-    tuple val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max5kb
-    file ("*.tsv") into tfit_model_model_out_split_max5kb
-    file ("*.log") into tfit_model_logs_out_split_max5kb
+    process tfit_split_model_max10kb {
+        println "[Log 4b]: Running Tfit model on 5-10kb prelim regions (maxk=5)"
 
-    script:
-    """
-    ${params.tfit_model_run} -t ${params.tfit_path} \
-                        -c ${params.tfit_config_k2} \
-                        -b ${bg} \
-                        -k ${prelim_max5kb} \
-                        -p ${prefix}_max5kb \
-                        -n 32
+        tag "$prefix"
+        memory '70 GB'
+        time '60h'
+        queue 'long'
+        clusterOptions = '-N 1 -n 32'
 
-    """
-}
+        publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
+        publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
 
-process tfit_split_model_max10kb {
-    println "[Log 4b]: Running Tfit model on 5-10kb prelim regions (maxk=5)"
+        when:
+        params.tfit_split_model
 
-    tag "$prefix"
-    memory '70 GB'
-    time '60h'
-    queue 'long'
-    clusterOptions = '-N 1 -n 32'
+        input:
+        tuple val(prefix), file(bg), file(prelim_max10kb) from tfit_prelim_bg_out_split_max10kb
 
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
-    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+        output:
+        set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max10kb
+        file ("*.tsv") into tfit_model_model_out_split_max10kb
+        file ("*.log") into tfit_model_logs_out_split_max10kb
 
-    when:
-    params.tfit_split_model
+        script:
+        """
+        ${params.tfit_model_run} -t ${params.tfit_path} \
+                            -c ${params.tfit_config} \
+                            -b ${bg} \
+                            -k ${prelim_max10kb} \
+                            -p ${prefix}_max10kb \
+                            -n 32
 
-    input:
-    tuple val(prefix), file(bg), file(prelim_max10kb) from tfit_prelim_bg_out_split_max10kb
+        """
+    }
 
-    output:
-    set val(prefix), file ("*_bidir_predictions.bed") into tfit_model_bed_out_split_max10kb
-    file ("*.tsv") into tfit_model_model_out_split_max10kb
-    file ("*.log") into tfit_model_logs_out_split_max10kb
-
-    script:
-    """
-    ${params.tfit_model_run} -t ${params.tfit_path} \
-                        -c ${params.tfit_config} \
-                        -b ${bg} \
-                        -k ${prelim_max10kb} \
-                        -p ${prefix}_max10kb \
-                        -n 32
-
-    """
-}
-
-if (params.tfit_split_model) {
     tfit_split_results = post_tfit_bg_split
         .join(tfit_model_bed_out_split_max5kb)
         .join(tfit_model_bed_out_split_max10kb)
@@ -616,6 +608,49 @@ if (params.tfit_split_model) {
         awk '{if (\$5 > 9) print \$0}' ${prefix}_split_bidir_cov.bed > ${prefix}_split_bidir_cov_filtered.bed
         """
     }
+
+} else if (params.prelim_process && (params.tfit || params.tfit_model)) {
+
+    tfit_prelim_bg_out_preprocess = prelimtfit_process_bg
+        .join(tfit_prelim_out)
+
+    process tfit_prelim_process {
+        println "[Log 4b]: Processing prelim file"
+
+        tag "$prefix"
+        memory '20 GB'
+        time '1h'
+        queue 'short'
+
+        publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
+
+        when:
+        params.prelim_process
+
+        input:
+        tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out_preprocess
+
+        output:
+        tuple val(prefix), file(bg), file ("*_prelim_coverage_filtered_diced.bed") into tfit_prelim_bg_out
+
+        script:
+        """
+        python3 ${params.prelim_filter} \
+                -p ${prelim} \
+                -b ${bg} \
+                -s ${prefix} \
+                -o . \
+                -g ${params.filtered_refseq} \
+                -c ${params.chrom_sizes}
+
+        """
+    }
+
+} else if (params.tfit || params.tfit_model) {
+
+    tfit_prelim_bg_out = prelimtfit_process_bg
+        .join(tfit_prelim_out)
+
 }
 
 process tfit_model {
@@ -629,7 +664,6 @@ process tfit_model {
 
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*{_bidir_predictions.bed,_bidir_cov_filtered.bed}"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
-    publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_coverage_filtered_diced.bed"
     
     when:
     params.tfit_model || params.tfit
@@ -638,7 +672,6 @@ process tfit_model {
     tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out
 
     output:
-    file ("*_prelim_coverage_filtered_diced.bed") into tfit_prelim_filtered
     tuple val(prefix), file ("*_bidir_predictions.bed"), file("*_bidir_cov_filtered.bed") into tfit_model_bed_out
     file ("*.tsv") into tfit_model_model_out
     file ("*.log") into tfit_model_logs_out
