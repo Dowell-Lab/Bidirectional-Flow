@@ -34,13 +34,12 @@ if [ -z "${t}" ] || [ -z "${c}" ] ; then
 fi
 
 ##load modules to run tfit
-module load mpich/3.2.1
 module load openmpi/1.6.4
 module load gcc/7.1.0
 module load bedtools/2.28.0
 
 ##print and export parameters
-export "OMP_NUM_THREADS=${n}"
+export "OMP_NUM_THREADS=1"
 echo "Number of threads: ${n}"
 echo "Run on           : ${SLURM_JOB_NODELIST}"
 
@@ -51,4 +50,4 @@ echo "Output prefix    : ${p}"
 echo "Output directory : $(pwd)"
 
 ##run tfit!
-mpirun -np 1 -host ${SLURM_JOB_NODELIST} ${t} bidir -config ${c} -ij $(pwd)/${b} -N ${p} -o $(pwd)
+mpirun -host ${SLURM_JOB_NODELIST} ${t} bidir -config ${c} -ij $(pwd)/${b} -N ${p} -o $(pwd)
