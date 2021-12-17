@@ -41,7 +41,7 @@ Check each tool for configuration requirements.
 - Tfit
   Install from https://github.com/Dowell-Lab/Tfit
 
-  Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step.
+  Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step. On Fiji Tfit is compiled with Open MPI.
 
 # Running Bidirectional-Flow
 
@@ -70,9 +70,11 @@ Check each tool for configuration requirements.
     Analysis Options:
         --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
-        --tfit                         Run Tfit bidir. If used, you must also specify the Tfit_path parameter.
+        --tfit                         Run Tfit bidir and full model. If used, you must also specify the Tfit_path parameter.
         --tfit_prelim                  Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
         --tfit_model                   Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
+        --tfit_split_model             Run Tfit model with different k values for different size regions (<5kb and 5-10kb)
+        --prelim_process               Split regions and filter Tfit prelim files according to current best practices. Automatically run with tfit_split_model
         --prelim_files                 Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
         --dreg                         Produce bigwigs formatted for input to dREG.
 
@@ -97,8 +99,8 @@ Check each tool for configuration requirements.
     --crams "/paths/to/*cram" \
     --workdir /processed_data/ \
     --singleEnd \
-    --tfit_prelim \
-    --tfit_model \
+    --tfit \
+    --prelim_process \
     --dreg
 
    ```
