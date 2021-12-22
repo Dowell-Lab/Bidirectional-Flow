@@ -11,7 +11,7 @@ This pipeline is built on top of and is an expansion of the Nascent-Flow pipelin
 
 Check each tool for configuration requirements.
 
-- Nextflow
+- Nextflow (version >= 19.10.0)
 
 - SAMtools
 
