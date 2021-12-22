@@ -157,7 +157,7 @@ if (params.crams) {
   println "[Log 1]: Output directory ... $params.outdir"
   cramfiles = Channel
                   .fromPath(params.crams)
-		  .map { file -> tuple(file.baseName, file)}		  
+                  .map { file -> tuple((file.simpleName + '.sorted'), file)}
 
   process cram_to_bam {
      cpus 16
