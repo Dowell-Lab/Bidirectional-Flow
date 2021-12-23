@@ -431,7 +431,7 @@ if (params.prelim_files) {
         memory '70 GB'
         time '6h'
         queue 'short'
-        clusterOptions = '-n 32'
+        clusterOptions = '-N 1 -n 32'
 
         publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
         publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
