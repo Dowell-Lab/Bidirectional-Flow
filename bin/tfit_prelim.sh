@@ -40,7 +40,7 @@ module load gcc/7.1.0
 module load bedtools/2.28.0
 
 ##print and export parameters
-export "OMP_NUM_THREADS=1"
+#export "OMP_NUM_THREADS=1"
 echo "Number of threads: ${n}"
 echo "Run on           : ${SLURM_JOB_NODELIST}"
 

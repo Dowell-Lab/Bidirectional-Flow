@@ -182,8 +182,19 @@ if (params.crams) {
 
   sorted_bam_file = Channel
                   .fromPath(params.bams)
-                  .map { file -> tuple(file.baseName, file)}
+                  .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 
+  bam_for_dreg = Channel
+                  .fromPath(params.bams)
+                  .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
+
+  bam_for_gene_counting = Channel
+                  .fromPath(params.bams)
+                  .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
+
+  bam_for_bidir_counting = Channel
+                  .fromPath(params.bams)
+                  .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 }
 
 process bam_conversion_tfit {
@@ -431,7 +442,7 @@ if (params.prelim_files) {
         memory '70 GB'
         time '6h'
         queue 'short'
-        clusterOptions = '-N 1 -n 32'
+        clusterOptions = '-N 1 -n 64'
 
         publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
         publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
