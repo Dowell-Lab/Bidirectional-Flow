@@ -18,10 +18,10 @@ while getopts ":t:c:b:p:n:" arg; do
 	p)
 	    p=${OPTARG}
 	    ;;
-	n)
-	    n=${OPTARG}
-	    ;;
-
+#	n)
+#	    n=${OPTARG}
+#	    ;;
+#
         h | *) ##display help message
             usage
             ;;
@@ -41,7 +41,7 @@ module load bedtools/2.28.0
 
 ##print and export parameters
 #export "OMP_NUM_THREADS=1"
-echo "Number of threads: ${n}"
+#echo "Number of threads: ${n}"
 echo "Run on           : ${SLURM_JOB_NODELIST}"
 
 echo "Tfit path        : ${t}"

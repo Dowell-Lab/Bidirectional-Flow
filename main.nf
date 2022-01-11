@@ -439,10 +439,10 @@ if (params.prelim_files) {
         println "[Log 4a]: Running Tfit prelim"
 
         tag "$prefix"
-        memory '70 GB'
+        memory '100 GB'
         time '6h'
         queue 'short'
-        clusterOptions = '-N 1 -n 64'
+        clusterOptions = '-N 1 -c 64'
 
         publishDir "${params.outdir}/tfit/prelim_logs", mode: 'copy', pattern: "*{log}"
         publishDir "${params.outdir}/tfit/prelim", mode: 'copy', pattern: "*_prelim_bidir_hits.bed"
@@ -462,8 +462,7 @@ if (params.prelim_files) {
         ${params.tfit_prelim_run} -t ${params.tfit_path} \
                            -c ${params.tfit_config} \
                            -b ${bg} \
-                           -p ${prefix} \
-                           -n 32
+                           -p ${prefix}
         """
 
     }
