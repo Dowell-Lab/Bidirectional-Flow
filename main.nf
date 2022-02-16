@@ -663,43 +663,44 @@ if (params.tfit_split_model) {
 
 }
 
-process tfit_model {
-    println "[Log 4b]: Running Tfit model"
+if (params.tfit || params.tfit_model) {
+    process tfit_model {
+        println "[Log 4b]: Running Tfit model"
 
-    tag "$prefix"
-    memory '70 GB'
-    time '72h'
-    queue 'long'
-    clusterOptions = '-N 1 -n 32'
+        tag "$prefix"
+        memory '70 GB'
+        time '72h'
+        queue 'long'
+        clusterOptions = '-N 1 -n 32'
 
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*{_bidir_predictions.bed,_bidir_cov_filtered.bed}"
-    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+        publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*{_bidir_predictions.bed,_bidir_cov_filtered.bed}"
+        publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
     
-    when:
-    params.tfit_model || params.tfit
+        when:
+        params.tfit_model || params.tfit
 
-    input:
-    tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out
+        input:
+        tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out
 
-    output:
-    tuple val(prefix), file ("*_bidir_predictions.bed"), file("*_bidir_cov_filtered.bed") into tfit_model_bed_out
-    file ("*.tsv") into tfit_model_model_out
-    file ("*.log") into tfit_model_logs_out
+        output:
+        tuple val(prefix), file ("*_bidir_predictions.bed"), file("*_bidir_cov_filtered.bed") into tfit_model_bed_out
+        file ("*.tsv") into tfit_model_model_out
+        file ("*.log") into tfit_model_logs_out
 
-    script:
-    """
-    ${params.tfit_model_run} -t ${params.tfit_path} \
-                        -c ${params.tfit_config} \
-                        -b ${bg} \
-                        -k ${prelim} \
-                        -p ${prefix} \
-                        -n 32
+        script:
+        """
+        ${params.tfit_model_run} -t ${params.tfit_path} \
+                            -c ${params.tfit_config} \
+                            -b ${bg} \
+                            -k ${prelim} \
+                            -p ${prefix} \
+                            -n 32
 
-    bedtools coverage -a ${prefix}-1_bidir_predictions.bed -b ${bg} > ${prefix}_bidir_cov.bed
-    awk '{if (\$5 > 9) print \$0}' ${prefix}_bidir_cov.bed > ${prefix}_bidir_cov_filtered.bed
-    """
+        bedtools coverage -a ${prefix}-1_bidir_predictions.bed -b ${bg} > ${prefix}_bidir_cov.bed
+        awk '{if (\$5 > 9) print \$0}' ${prefix}_bidir_cov.bed > ${prefix}_bidir_cov_filtered.bed
+        """
+    }
 }
-
 println "[Log 4b]: Done Running Tfit model\n"
 
 
