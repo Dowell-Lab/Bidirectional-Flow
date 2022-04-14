@@ -170,7 +170,7 @@ if (params.crams) {
      tuple val(prefix),file(cram) from cramfiles
 
      output:
-     tuple val(prefix), file("${prefix}.sorted.bam"), file("${prefix}.sorted.bam.bai") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting, bam_for_bidir_counting
+     tuple val(prefix), file("${prefix}.sorted.bam"), file("${prefix}.sorted.bam.bai") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting
 
      script:
      """
@@ -192,9 +192,6 @@ if (params.crams) {
                   .fromPath(params.bams)
                   .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 
-  bam_for_bidir_counting = Channel
-                  .fromPath(params.bams)
-                  .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 }
 
 process bam_conversion_tfit {
@@ -558,7 +555,7 @@ if (params.tfit_split_model) {
 
         tag "$prefix"
         memory '70 GB'
-        time '72h'
+        time '160h'
         queue 'long'
         clusterOptions = '-N 1 -n 32'
 
@@ -709,7 +706,6 @@ println "[Log 4b]: Done Running Tfit model\n"
 process dreg_prep {
     println "[Log 5]: Generating bigwig files for dREG"
 
-    validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$prefix"
     memory '60 GB'
@@ -719,13 +715,14 @@ process dreg_prep {
     publishDir "${params.outdir}/bigwig/", mode: 'copy', pattern: "*.bw"
 
     when:
-    params.dreg
+    params.dreg || params.dreg_results
 
     input:
     set val(prefix), file(bam_file), file(index) from bam_for_dreg
 
     output:
     tuple val(prefix), file("${prefix}.pos.bw"), file("${prefix}.neg.bw") into dreg_bigwig
+    tuple val(prefix), file("${prefix}.bedGraph") into dreg_bg
 
     script:
     if (params.singleEnd) {
@@ -768,6 +765,14 @@ process dreg_prep {
         ${params.bedGraphToBigWig} ${prefix}.pos.sort.bedGraph ${params.chrom_sizes} ${prefix}.pos.bw
         ${params.bedGraphToBigWig} ${prefix}.neg.sort.bedGraph ${params.chrom_sizes} ${prefix}.neg.bw
 
+        cat ${prefix}.pos.bedGraph \
+        ${prefix}.neg.bedGraph \
+        > ${prefix}.unsorted.bedGraph
+
+        sortBed \
+        -i ${prefix}.unsorted.bedGraph \
+        > ${prefix}.bedGraph
+
         echo "bedGraph to bigwig done"
         """
     } else {
@@ -802,6 +807,13 @@ process dreg_prep {
             ${params.bedGraphToBigWig} ${prefix}.neg.bedGraph \
               ${params.chrom_sizes} ${prefix}.neg.bw
 
+            cat ${prefix}.pos.bedGraph \
+            ${prefix}.neg.bedGraph \
+            > ${prefix}.unsorted.bedGraph
+
+            sortBed \
+            -i ${prefix}.unsorted.bedGraph \
+            > ${prefix}.bedGraph
             """
         } else {
             """
@@ -833,6 +845,14 @@ process dreg_prep {
 
             ${params.bedGraphToBigWig} ${prefix}.neg.bedGraph \
               ${params.chrom_sizes} ${prefix}.neg.bw
+
+            cat ${prefix}.pos.bedGraph \
+            ${prefix}.neg.bedGraph \
+            > ${prefix}.unsorted.bedGraph
+
+            sortBed \
+            -i ${prefix}.unsorted.bedGraph \
+            > ${prefix}.bedGraph
             """
         }
     }
@@ -875,6 +895,57 @@ process dreg_run {
 	     4 1 
         """
 }
+
+if (params.dreg_results) {
+    dreg_res = Channel
+        .fromPath(params.dreg_results)
+        .map { file -> tuple((file.simpleName + '.sorted'), file)}
+
+    dreg_res_process = dreg_bg
+        .join(dreg_res)
+
+} else if (params.dreg) {
+
+    dreg_res_process = dreg_bg
+        .join(dREG_out)
+
+} else {
+
+    dreg_res_process = Channel.create()
+
+}
+
+process dreg_postprocess {
+    println "Log[6]: Running dREG postprocessing"
+
+    tag "$prefix"
+    memory '8 GB'
+    time '1h'
+    cpus 1
+    queue 'short'
+
+    publishDir "${params.outdir}/dreg/", mode: 'copy', pattern: "*covfiltered.bed"
+    stageInMode 'copy'
+
+    when:
+    params.dreg || params.dreg_results
+
+    input:
+    tuple val(prefix), file(bg), file(dreg_resfile) from dreg_res_process
+
+    output:
+    tuple val(prefix), file ("${prefix}.*") into dREG_res_out
+
+    script:
+        """
+        gunzip ${prefix}.dREG.peak.full.bed.gz
+	bedtools merge -i ${prefix}.dREG.peak.full.bed -d 20 > ${prefix}.dREG.peak.full.merge_distance20bp.bed
+        bedtools coverage -a ${prefix}.dREG.peak.full.merge_distance20bp.bed -b ${bg} > ${prefix}.dREG.bidir.cov.bed
+        awk '{if (\$4 > 9) print \$0}' ${prefix}.dREG.bidir.cov.bed > ${prefix}.dREG.full.covfiltered.bed
+        gzip ${prefix}.dREG.peak.full.bed
+        """
+}
+
 
 // PART 7: Counting over genes
 
@@ -1032,69 +1103,6 @@ process gene_count {
 }
 
 println "[Log 7]: Done Running FeatureCounts\n"
-
-
-// PART 7: Counting over bidirectionals
-
-process bidir_count {
-   println "[Log 7]: Running FeatureCounts (bidirectionals)"
-
-    tag "$prefix"
-    memory '8 GB'
-    time '3h'
-    cpus 8
-    queue 'short'
-
-    publishDir "${params.outdir}/featurecounts_bidirs/", mode: 'copy', pattern: "*bidir_counts.txt"
-
-    when:
-    params.bidir_count
-
-    input:
-    tuple val(prefix), file(bam_file), file(index) from bam_for_bidir_counting
-
-    output:
-    tuple val(prefix), file ("*bidir_counts.txt") into bidir_count_out
-
-    script:
-    if (params.singleEnd) {
-        paired = 'FALSE'
-    } else {
-        paired = 'TRUE'
-    }
-
-    """
-
-    #!/usr/bin/env Rscript
-
-    library("Rsubread")
-
-## Need to make gtf files from bidir beds ##
-    gtf_table <- read.table("${params.filtered_refseq}")
-
-    fc <- featureCounts(files="${bam_file}",
-        annot.ext="${params.filtered_refseq}",
-        isGTFAnnotationFile=TRUE,
-##        GTF.featureType="gene_length",
-        useMetaFeatures=FALSE,
-        allowMultiOverlap=TRUE,
-        largestOverlap=TRUE,
-        countMultiMappingReads=FALSE,
-        isPairedEnd=${paired},
-        strandSpecific=0,
-        nthreads=8)
-#    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-#    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
-        file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
-        quote=FALSE,sep="\t",
-        row.names=FALSE)
-
-    """
-}
-
-println "[Log 8]: Done Running FeatureCounts (bidirs)\n"
-
 
 /*
  * Completion report
