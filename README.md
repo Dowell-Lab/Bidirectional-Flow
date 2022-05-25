@@ -55,15 +55,15 @@ Edit the configuration file to reflect the correct cluster paths (for genome spe
 
 User account-installed libraries such as boost and R packages must be added to the path before running Bidirectional-Flow, using commands such as the following:
   ```
-  -<export R_LIBS_USER=/Users/username/.R/3.6.0/>
-  -<export PATH=/Users/username/.local/boost_1_75_0/:"$PATH">
+  export R_LIBS_USER=/Users/username/.R/3.6.0/
+  export PATH=/Users/username/.local/boost_1_75_0/:"$PATH"
   ```
 
 ## FStitch Requirements
 
 FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `example.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch `bidir` module is in Python3 and must also be pip installed (see Package Requirements).
   ```
-  -<pip3 install fstitch-annotate --user>
+  pip3 install fstitch-annotate --user
   ```
 
 ## Loading requirements on SLURM
@@ -156,7 +156,7 @@ dREG (see https://github.com/Danko-Lab/dREG) is run according to specifications 
 
 By default, dREG outputs undergo a coverage filtering step identical to that performed on Tfit outputs (see above). This coverage filtering process can be run on existing dREG results using the `--dreg_results` flag to specify paths for output files.
 
-### Credits
+## Credits
 
 * Rutendo Sigauke (): Nextflow base code and pipeline implementation
 * Lynn Sanford ([@lynn-sanford](https://github.com/lynn-sanford)): Nextflow pipeline implementation and optimization
