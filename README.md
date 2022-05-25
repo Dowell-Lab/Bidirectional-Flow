@@ -54,13 +54,17 @@ Each run of Bidirectional-Flow requires a configuration file which specifies gen
 Edit the configuration file to reflect the correct cluster paths (for genome specific variables and cluster-wide executables like Tfit and FStitch on Fiji), and user-specific paths (for dREG installation).
 
 User account-installed libraries such as boost and R packages must be added to the path before running Bidirectional-Flow, using commands such as the following:
+  ```
   -<export R_LIBS_USER=/Users/username/.R/3.6.0/>
   -<export PATH=/Users/username/.local/boost_1_75_0/:"$PATH">
+  ```
 
 ## FStitch Requirements
 
 FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `example.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch `bidir` module is in Python3 and must also be pip installed (see Package Requirements).
+  ```
   -<pip3 install fstitch-annotate --user>
+  ```
 
 ## Loading requirements on SLURM
 
@@ -136,9 +140,9 @@ Running the `--tfit` argument in the pipeline will run both of these modules in 
 Several optimized options are also available for running Tfit.
 
 The first is `--prelim_process`, which by default is true. This informs the pipeline to process prelim files prior to modeling by performing three steps:
-  -Add 2kb regions around annotated transcription start sites
-  -Cut large prelim regions into equal-size regions less than 10kb.
-  -Filter out regions that have less than 5 unique reads, as determined with `bedtools coverage`
+- Add 2kb regions around annotated transcription start sites
+- Cut large prelim regions into equal-size regions less than 10kb.
+- Filter out regions that have less than 5 unique reads, as determined with `bedtools coverage`
 
 Before final model output, all modeled output regions are also filtered for coverage using the same metric. This cannot currently be turned off.
 
