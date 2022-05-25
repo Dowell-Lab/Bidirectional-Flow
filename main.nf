@@ -47,6 +47,7 @@ def helpMessage() {
 
     Analysis Options:
         --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
+        --bidir_count                  Run featureCounts to obtain stranded and unstranded bidirectional counts over an annotation (SAF file)
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit bidir. If used, you must also specify the Tfit_path parameter.
         --tfit_prelim		       Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
@@ -55,6 +56,7 @@ def helpMessage() {
         --prelim_files		       Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
         --prelim_process               Run the prelim processing step for Tfit (default true)
         --dreg                         Produce bigwigs formatted for input to dREG.
+        --dreg_results                 Do coverage filtering on existing dreg results
     """.stripIndent()
 }
 
@@ -96,7 +98,9 @@ summary['Tfit split model'] = params.tfit_split_model ? 'YES' : 'NO'
 summary['Tfit prelim files']	= params.prelim_files ? 'YES' : 'NO'
 summary['Process Tfit prelims'] = params.prelim_process ? 'YES' : 'NO'
 summary['dREG']             = params.dreg ? 'YES' : 'NO'
+summary['dREG postprocess'] = params.dreg ? 'YES' : params.dreg_results ? 'YES' : 'NO'
 summary['Gene counting']    = params.gene_count ? 'YES' : 'NO'
+summary['Bidir counting']   = params.bidir_count ? 'YES' : 'NO'
 if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
 if(params.fstitch)summary['FStitch train']    = params.fstitch_train
 if(params.tfit)summary['Tfit dir']      = params.tfit_path
@@ -170,7 +174,7 @@ if (params.crams) {
      tuple val(prefix),file(cram) from cramfiles
 
      output:
-     tuple val(prefix), file("${prefix}.sorted.bam"), file("${prefix}.sorted.bam.bai") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting
+     tuple val(prefix), file("${prefix}.sorted.bam"), file("${prefix}.sorted.bam.bai") into sorted_bam_file, bam_for_dreg, bam_for_gene_counting, bam_for_bidir_counting
 
      script:
      """
@@ -189,6 +193,10 @@ if (params.crams) {
                   .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 
   bam_for_gene_counting = Channel
+                  .fromPath(params.bams)
+                  .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
+
+  bam_for_bidir_counting = Channel
                   .fromPath(params.bams)
                   .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 
@@ -1103,6 +1111,105 @@ process gene_count {
 }
 
 println "[Log 7]: Done Running FeatureCounts\n"
+
+// PART 8: Counting over bidirectionals
+
+process bidirectional_count {
+   println "[Log 8]: Running FeatureCounts over bidirs"
+
+    tag "$prefix"
+    memory '8 GB'
+    time '3h'
+    cpus 8
+    queue 'short'
+
+    publishDir "${params.outdir}/featurecounts_bidirs/", mode: 'copy', pattern: "*bidir_counts.txt"
+
+    when:
+    params.bidir_count
+
+    input:
+    tuple val(prefix), file(bam_file), file(index) from bam_for_bidir_counting
+
+    output:
+    tuple val(prefix), file ("*bidir_counts.txt") into bidir_count_out
+
+    script:
+    if (params.singleEnd) {
+        paired = 'FALSE'
+    } else {
+        paired = 'TRUE'
+    }
+
+    """
+    #!/usr/bin/env Rscript
+
+    library("Rsubread")
+
+    bidir_table <- read.table("${params.bidir_accum}")
+
+    if (${paired} == 'FALSE') {
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.bidir_accum}",
+        isGTFAnnotationFile=FALSE,
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=FALSE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=1,
+        nthreads=8)
+    fc\$annotation["BidirID"] <- bidir_table["V4"]
+    write.table(x=data.frame(fc\$annotation[,c("BidirID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".stranded.bidir_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    } else {
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.bidir_accum}",
+        isGTFAnnotationFile=FALSE,
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=FALSE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=2,
+        nthreads=8)
+    fc\$annotation["BidirID"] <- gtf_table["V4"]
+    write.table(x=data.frame(fc\$annotation[,c("BidirID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".stranded.bidir_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    }
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.bidir_accum}",
+        isGTFAnnotationFile=FALSE,
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=FALSE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=0,
+        nthreads=8)
+    fc\$annotation["BidirID"] <- gtf_table["V4"]
+    write.table(x=data.frame(fc\$annotation[,c("BidirID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    """
+}
+
+println "[Log 8]: Done Running FeatureCounts\n"
+
 
 /*
  * Completion report

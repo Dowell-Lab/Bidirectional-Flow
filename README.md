@@ -23,7 +23,7 @@ Check each tool for configuration requirements.
   Install dREG from https://github.com/Danko-Lab/dREG
 
   Note: Instructions to install the dependencies for dREG can be found on their repository.
-  Since rphast is nolonger on CRAN, it can be nstalled from the tar ball (install.packages("rphast_1.6.11.tar.gz", repos=NULL, type="source"))
+  Since rphast is nolonger on CRAN, it can be installed from the tar ball (install.packages("rphast_1.6.11.tar.gz", repos=NULL, type="source"))
 
   Archived from CRAN https://cran.r-project.org/src/contrib/Archive/rphast/
 
@@ -43,6 +43,38 @@ Check each tool for configuration requirements.
 
   Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step. On Fiji Tfit is compiled with Open MPI.
 
+- Rsubread R package (for featureCounts read counting)
+  Install as user from Bioconductor https://bioconductor.org/packages/release/bioc/html/Rsubread.html
+
+
+## Configuration Files
+
+Each run of Bidirectional-Flow requires a configuration file which specifies genome-specific and user specific variables.
+
+Edit the configuration file to reflect the correct cluster paths (for genome specific variables and cluster-wide executables like Tfit and FStitch on Fiji), and user-specific paths (for dREG installation).
+
+User account-installed libraries such as boost and R packages must be added to the path before running Bidirectional-Flow, using commands such as the following:
+  -<export R_LIBS_USER=/Users/username/.R/3.6.0/>
+  -<export PATH=/Users/username/.local/boost_1_75_0/:"$PATH">
+
+## FStitch Requirements
+
+FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `example.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch `bidir` module is in Python3 and must also be pip installed (see Package Requirements).
+  -<pip3 install fstitch-annotate --user>
+
+## Loading requirements on SLURM
+
+  Below is a summary of all FIJI modules needed to run Bidirectional-Flow. The R version you use depends on which version used for installing packages in user accounts.
+
+  ```
+  module load samtools/1.8
+  module load bedtools/2.28.0
+  module load openmpi/1.6.4
+  module load gcc/7.1.0
+  module load python/3.6.3
+  module load R/3.6.1
+  ```
+
 # Running Bidirectional-Flow
 
 ## Usage
@@ -51,7 +83,7 @@ Check each tool for configuration requirements.
     
    `$ nextflow run main.nf -profile slurm --crams '/project/*.sorted.cram' --workdir '/project/tempfiles' --outdir '/project/'`
 
-   Below are the arguments :
+   Below are the arguments (see further details about Tfit and dREG options below):
 
    ```
     Required arguments:
@@ -69,6 +101,7 @@ Check each tool for configuration requirements.
 
     Analysis Options:
         --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
+        --bidir_count                  Run featureCounts to obtain stranded and unstranded read counts over an SAF annotation, such as for Tfit- and/or dREG-derived bidirectionals
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit bidir and full model. If used, you must also specify the Tfit_path parameter.
         --tfit_prelim                  Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
@@ -77,20 +110,9 @@ Check each tool for configuration requirements.
         --prelim_process               Split regions and filter Tfit prelim files according to current best practices. Automatically run with tfit_split_model
         --prelim_files                 Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
         --dreg                         Produce bigwigs formatted for input to dREG.
+        --dreg_results                 Run coverage filtering on existing dREG results
 
    ```
-
-## Loading requirements on SLURM
-
-  Below is a summary of all FIJI modules needed to run TFEA.
-  
-  ```
-  module load samtools/1.8	
-  module load bedtools/2.28.0
-  module load openmpi/1.6.4
-  module load gcc/7.1.0
-  module load python/3.6.3
-  ```
 
 ## Example run
 
@@ -104,3 +126,33 @@ Check each tool for configuration requirements.
     --dreg
 
    ```
+
+## Tfit options
+
+Tfit (see https://github.com/Dowell-Lab/Tfit) contains an internal template matching algorithm (the `bidir` module) to generate preliminary regions to model, then will model RNAPII activity using the `model` module.
+
+Running the `--tfit` argument in the pipeline will run both of these modules in sequence. The modules may be run separately with `--tfit_prelim`, which runs the `bidir` module, or `--tfit_model` in conjunction with `--prelim_files`, which runs the `model` module on already-generated prelim files.
+
+Several optimized options are also available for running Tfit.
+
+The first is `--prelim_process`, which by default is true. This informs the pipeline to process prelim files prior to modeling by performing three steps:
+  -Add 2kb regions around annotated transcription start sites
+  -Cut large prelim regions into equal-size regions less than 10kb.
+  -Filter out regions that have less than 5 unique reads, as determined with `bedtools coverage`
+
+Before final model output, all modeled output regions are also filtered for coverage using the same metric. This cannot currently be turned off.
+
+The second optimization option is to run `--tfit_split_model`, which must be used with `--prelim_process=true` (default behavior). This runs two separate instances of the Tfit `model` module, specifying the model to look for up to two bidirectionals (k=2) in prelim regions <5kb in length and to look for up to five bidirectionals (k=5) in prelim regions from 5-10kb in length. Without this option (using either the `--tfit` or `--tfit_model`) flags, a single instance of the model module is called with a blanket k=5.
+
+Please be aware that the Tfit model module may take a long time to run (5-70 hrs on mammalian datasets, depending on dataset complexity), regardless of which flag is used. The split modeling process may take less walltime, but may use as many resources due to two parallel modeling processes.
+
+## dREG options
+
+dREG (see https://github.com/Danko-Lab/dREG) is run according to specifications from the Danko lab.
+
+By default, dREG outputs undergo a coverage filtering step identical to that performed on Tfit outputs (see above). This coverage filtering process can be run on existing dREG results using the `--dreg_results` flag to specify paths for output files.
+
+### Credits
+
+* Rutendo Sigauke (): Nextflow base code and pipeline implementation
+* Lynn Sanford ([@lynn-sanford](https://github.com/lynn-sanford)): Nextflow pipeline implementation and optimization
