@@ -102,6 +102,12 @@ FStitch can now optionally be run to segment nascent data into active and inacti
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
+        --savestats                    Saves tfit/dreg bidirectional statistics for all samples (default true)
+        --savebam                      Saves sorted bam files (if cram as input)
+        --savetfitbam                  Saves multimapped read filtered bamfiles used for tfit
+        --savebg                       Saves bedgraph files for tfit and/or dreg (whichever is run)
+        --savebw                       Saves dreg bigwig files
+        --savebidirs                   Saves bedfiles for promoter/intronic/intergenic bidirectional subsets
 
     Analysis Options:
         --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
@@ -127,7 +133,8 @@ FStitch can now optionally be run to segment nascent data into active and inacti
     --singleEnd \
     --tfit \
     --prelim_process \
-    --dreg
+    --dreg \
+    --savebidirs
 
    ```
 
