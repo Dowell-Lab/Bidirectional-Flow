@@ -44,6 +44,12 @@ def helpMessage() {
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
+        --savestats                    Saves tfit/dreg bidirectional statistics for all samples (default true)
+        --savebam                      Saves sorted bam files (if cram as input)
+        --savetfitbam                  Saves multimapped read filtered bamfiles used for tfit
+        --savebg                       Saves bedgraph files for tfit and/or dreg (whichever is run)
+        --savebw                       Saves dreg bigwig files
+        --savebidirs                   Saves bedfiles for promoter/intronic/intergenic bidirectional subsets
 
     Analysis Options:
         --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
@@ -104,6 +110,12 @@ summary['Bidir counting']   = params.bidir_count ? 'YES' : 'NO'
 if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
 if(params.fstitch)summary['FStitch train']    = params.fstitch_train
 if(params.tfit)summary['Tfit dir']      = params.tfit_path
+summary['Save bidir stats'] = params.savestats ? 'YES' : 'NO'
+summary['Save bamfiles']    = params.savebam ? 'YES' : 'NO'
+summary['Save Tfit bamfiles']    = params.savetfitbam ? 'YES' : 'NO'
+summary['Save bedgraphs']   = params.savebg ? 'YES' : 'NO'
+summary['Save bigwigs']     = params.savebw ? 'YES' : 'NO'
+summary['Save bidir subsets']   = params.savebidirs ? 'YES' : 'NO'
 summary['Working dir']      = workflow.workDir
 summary['Container Engine'] = workflow.containerEngine
 if(workflow.containerEngine) summary['Container'] = workflow.container
@@ -170,6 +182,12 @@ if (params.crams) {
      time '1h30m'
      tag "$prefix"
 
+     publishDir "${params.outdir}" , mode: 'copy',
+     saveAs: {filename ->
+              if (params.savebam && (filename == "${prefix}.sorted.bam"))    "bams/${prefix}.sorted.bam"
+              else null
+             }
+
      input:
      tuple val(prefix),file(cram) from cramfiles
 
@@ -209,6 +227,12 @@ process bam_conversion_tfit {
    time '2h'
    tag "$prefix"
 
+   publishDir "${params.outdir}" , mode: 'copy',
+   saveAs: {filename ->
+            if (params.savetfitbam && (filename == "${prefix}.mmfilt.sorted.bam"))    "bams/${prefix}.mmfilt.sorted.bam"
+            else null
+           }
+
    when:
    params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model
 
@@ -242,7 +266,11 @@ process bedgraphs {
     queue 'short'
     time '4h'
     
-    publishDir "${params.outdir}/bedgraphs", mode: 'copy', pattern: "${prefix}.bedGraph"
+    publishDir "${params.outdir}" , mode: 'copy',
+    saveAs: {filename ->
+             if (params.savebg && (filename == "${prefix}.bedGraph"))    "bedgraphs/${prefix}.bedGraph"
+             else null
+            }
 
     when:
     params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model
@@ -612,7 +640,7 @@ if (params.tfit_split_model) {
         tuple val(prefix), file(bg), file(out_max5kb), file(out_max10kb) from tfit_split_results
 
         output:
-        set val(prefix), file ("*split_bidir_predictions.bed"), file("*split_bidir_cov_filtered.bed") into tfit_model_split_out
+        set val(prefix), file ("*split_bidir_predictions.bed"), file("*split_bidir_cov_filtered.bed") into tfit_model_out
 
         script:
         """
@@ -688,7 +716,7 @@ if (params.tfit || params.tfit_model) {
         tuple val(prefix), file(bg), file(prelim) from tfit_prelim_bg_out
 
         output:
-        tuple val(prefix), file ("*_bidir_predictions.bed"), file("*_bidir_cov_filtered.bed") into tfit_model_bed_out
+        tuple val(prefix), file ("*_bidir_predictions.bed"), file("*_bidir_cov_filtered.bed") into tfit_model_out
         file ("*.tsv") into tfit_model_model_out
         file ("*.log") into tfit_model_logs_out
 
@@ -720,7 +748,12 @@ process dreg_prep {
     cpus 16
     queue 'short'
 
-    publishDir "${params.outdir}/bigwig/", mode: 'copy', pattern: "*.bw"
+    publishDir "${params.outdir}" , mode: 'copy',
+    saveAs: {filename ->
+             if (params.savebg && (filename == "${prefix}.bedGraph"))       "bedgraphs/${prefix}.fivep.bedGraph"
+             else if (params.savebw && (filename.indexOf("bw") > 0))        "bigwigs/$filename"
+             else null
+            }
 
     when:
     params.dreg || params.dreg_results
@@ -942,7 +975,7 @@ process dreg_postprocess {
     tuple val(prefix), file(bg), file(dreg_resfile) from dreg_res_process
 
     output:
-    tuple val(prefix), file ("${prefix}.*") into dREG_res_out
+    tuple val(prefix), file ("${prefix}.dREG.full.covfiltered.bed") into dREG_res_out
 
     script:
         """
@@ -954,11 +987,184 @@ process dreg_postprocess {
         """
 }
 
+// PART 7: Running stats on tfit/dreg outputs
 
-// PART 7: Counting over genes
+if (params.savestats) {
+
+  println "[Log 7]: Getting bidir stats"
+
+  process calculate_tfit_stats {
+      tag "$prefix"
+      memory '8 GB'
+      time '1h'
+      cpus 1
+      queue 'short'
+      stageInMode 'copy'
+
+      publishDir "${params.outdir}" , mode: 'copy',
+      saveAs: {filename ->
+               if (params.savebidirs && (filename.indexOf("${prefix}.tfit.") > 0))       "tfit_subsets/$filename"
+               else null
+              }
+
+      when:
+      params.tfit || params.tfit_split_model || params.tfit_model
+
+      input:
+      tuple val(prefix), file(nonfilt), file(tfit_regions) from tfit_model_out
+
+      output:
+      tuple val(prefix), file ("${prefix}.tfit.*") into tfit_subsets
+      file ("${prefix}.tfit_stats.txt") into tfit_stats
+
+      script:
+      """
+      bedtools intersect -wa -a ${tfit_regions} -b ${params.promoter_bed} > ${prefix}.tfit.promoter_regions.bed
+      bedtools intersect -wa -a ${tfit_regions} -b ${params.intron_bed} > intron_regions_temp.bed
+      bedtools intersect -wa -a ${tfit_regions} -b ${params.intergenic_bed} > intergenic_regions_temp.bed
+      bedtools intersect -v -a intron_regions_temp.bed -b ${params.exon_bed} \
+        > intron_regions_temp2.bed
+      bedtools intersect -v -a intron_regions_temp2.bed -b ${prefix}.tfit.promoter_regions.bed \
+        > ${prefix}.tfit.intron_regions.bed
+      bedtools intersect -v -a intergenic_regions_temp.bed -b ${params.exon_bed} \
+        > intergenic_regions_temp2.bed
+      bedtools intersect -v -a intergenic_regions_temp2.bed -b ${prefix}.tfit.promoter_regions.bed \
+        > ${prefix}.tfit.intergenic_regions.bed
+
+      bedtools getfasta -fi ${params.genome} -bed ${tfit_regions} -fo seqs.txt
+      gcnum=\$(tr -cd 'CGcg' < seqs.txt | wc -c)
+      totnum=\$(tr -cd 'ATCGatcg' < seqs.txt | wc -c)
+      gc_prop=\$(echo "scale=3 ; \$gcnum / \$totnum" | bc)
+
+      printf "%s\t%s\t%s\t%s\t%s\t%.3f\n" \
+          ${prefix} \
+          \$(wc -l ${tfit_regions} | awk '{print \$1}') \
+          \$(wc -l ${prefix}.tfit.promoter_regions.bed | awk '{print \$1}') \
+          \$(wc -l ${prefix}.tfit.intron_regions.bed | awk '{print \$1}') \
+          \$(wc -l ${prefix}.tfit.intergenic_regions.bed | awk '{print \$1}') \
+          \$gc_prop \
+          > ${prefix}.tfit_stats.txt
+      """
+  }
+
+  process calculate_dreg_stats {
+      tag "$prefix"
+      memory '8 GB'
+      time '1h'
+      cpus 1
+      queue 'short'
+      stageInMode 'copy'
+
+      publishDir "${params.outdir}" , mode: 'copy',
+      saveAs: {filename ->
+               if (params.savebidirs && (filename.indexOf("${prefix}.dreg.") > 0))       "dreg_subsets/$filename"
+               else null
+              }
+
+      when:
+      params.dreg || params.dreg_results
+
+      input:
+      tuple val(prefix), file(dreg_regions) from dREG_res_out
+
+      output:
+      tuple val(prefix), file ("${prefix}.dreg.*") into dreg_subsets
+      file ("${prefix}.dreg_stats.txt") into dreg_stats
+
+      script:
+      """
+      bedtools intersect -wa -a ${dreg_regions} -b ${params.promoter_bed} > ${prefix}.dreg.promoter_regions.bed
+      bedtools intersect -wa -a ${dreg_regions} -b ${params.intron_bed} > intron_regions_temp.bed
+      bedtools intersect -wa -a ${dreg_regions} -b ${params.intergenic_bed} > intergenic_regions_temp.bed
+      bedtools intersect -v -a intron_regions_temp.bed -b ${params.exon_bed} \
+        > intron_regions_temp2.bed
+      bedtools intersect -v -a intron_regions_temp2.bed -b ${prefix}.dreg.promoter_regions.bed \
+        > ${prefix}.dreg.intron_regions.bed
+      bedtools intersect -v -a intergenic_regions_temp.bed -b ${params.exon_bed} \
+        > intergenic_regions_temp2.bed
+      bedtools intersect -v -a intergenic_regions_temp2.bed -b ${prefix}.dreg.promoter_regions.bed \
+        > ${prefix}.dreg.intergenic_regions.bed
+
+      bedtools getfasta -fi ${params.genome} -bed ${dreg_regions} -fo seqs.txt
+      gcnum=\$(tr -cd 'CGcg' < seqs.txt | wc -c)
+      totnum=\$(tr -cd 'ATCGatcg' < seqs.txt | wc -c)
+      gc_prop=\$(echo "scale=3 ; \$gcnum / \$totnum" | bc)
+
+      printf "%s\t%s\t%s\t%s\t%s\t%.3f\n" \
+          ${prefix} \
+          \$(wc -l ${dreg_regions} | awk '{print \$1}') \
+          \$(wc -l ${prefix}.dreg.promoter_regions.bed | awk '{print \$1}') \
+          \$(wc -l ${prefix}.dreg.intron_regions.bed | awk '{print \$1}') \
+          \$(wc -l ${prefix}.dreg.intergenic_regions.bed | awk '{print \$1}') \
+          \$gc_prop \
+          > ${prefix}.dreg_stats.txt
+      """
+  }
+
+  process accumulate_tfit_stats {
+      tag "tfit_stats"
+      memory '1 GB'
+      time '1h'
+      cpus 1
+      queue 'short'
+      stageInMode 'copy'
+
+      publishDir "${params.outdir}/bidir_summary" , mode: 'copy', pattern: "tfit_stats.txt"
+
+      when:
+      params.tfit || params.tfit_split_model || params.tfit_model
+
+      input:
+      file ('*') from tfit_stats.collect()
+
+      output:
+      file ("tfit_stats.txt") into tfit_stats_accum
+
+      script:
+      """
+      printf "sample_id\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
+      > tfit_stats.txt
+      cat *.tfit_stats.txt >> tfit_stats.txt
+
+      """
+  }
+
+  process accumulate_dreg_stats {
+      tag "dreg_stats"
+      memory '1 GB'
+      time '1h'
+      cpus 1
+      queue 'short'
+      stageInMode 'copy'
+
+      publishDir "${params.outdir}/bidir_summary" , mode: 'copy', pattern: "dreg_stats.txt"
+
+      when:
+      params.dreg || params.dreg_results
+
+      input:
+      file ('*') from dreg_stats.collect()
+
+      output:
+      file ("dreg_stats.txt") into dreg_stats_accum
+
+      script:
+      """
+      printf "sample_id\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
+      > dreg_stats.txt
+      cat *.dreg_stats.txt >> dreg_stats.txt
+
+      """
+  }
+
+  println "[Log 7]: Finished with bidir stats"
+
+}
+
+// PART 8: Counting over genes
 
 process gene_count {
-   println "[Log 7]: Running FeatureCounts"
+   println "[Log 8]: Running FeatureCounts"
 
     tag "$prefix"
     memory '8 GB'
@@ -1110,12 +1316,12 @@ process gene_count {
     """
 }
 
-println "[Log 7]: Done Running FeatureCounts\n"
+println "[Log 8]: Done Running FeatureCounts\n"
 
-// PART 8: Counting over bidirectionals
+// PART 9: Counting over bidirectionals
 
 process bidirectional_count {
-   println "[Log 8]: Running FeatureCounts over bidirs"
+   println "[Log 9]: Running FeatureCounts over bidirs"
 
     tag "$prefix"
     memory '8 GB'
@@ -1208,7 +1414,7 @@ process bidirectional_count {
     """
 }
 
-println "[Log 8]: Done Running FeatureCounts\n"
+println "[Log 9]: Done Running FeatureCounts\n"
 
 
 /*
