@@ -84,10 +84,19 @@ FStitch can now optionally be run to segment nascent data into active and inacti
 ## Usage
 
    The typical command for running the pipeline is as follows:
-    
-   `$ nextflow run main.nf -profile slurm --crams '/project/*.sorted.cram' --workdir '/project/tempfiles' --outdir '/project/'`
 
-   Below are the arguments (see further details about Tfit and dREG options below):
+   ```
+   nextflow run /Bidirectional-Flow/main.nf -profile hg38 \
+    --crams "/paths/to/*cram" \
+    --workdir /processed_data/ \
+    --singleEnd \
+    --tfit \
+    --dreg \
+    --savebidirs
+
+   ```
+
+   Arguments (see further details about Tfit and dREG options below):
 
    ```
     Required arguments:
@@ -117,24 +126,10 @@ FStitch can now optionally be run to segment nascent data into active and inacti
         --tfit_prelim                  Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
         --tfit_model                   Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
         --tfit_split_model             Run Tfit model with different k values for different size regions (<5kb and 5-10kb)
-        --prelim_process               Split regions and filter Tfit prelim files according to current best practices. Automatically run with tfit_split_model
+        --prelim_process               Split regions and filter Tfit prelim files according to current best practices(default true). Must be true if running tfit_split_model
         --prelim_files                 Directory pattern for tfit prelim files: /project/*-1_prelim_bidir_hits.bed (required for --tfit_model if --tfit_prelim is not also specified)
         --dreg                         Produce bigwigs formatted for input to dREG.
         --dreg_results                 Run coverage filtering on existing dREG results
-
-   ```
-
-## Example run
-
-   ```
-   nextflow run /Bidirectional-Flow/main.nf -profile hg38 \
-    --crams "/paths/to/*cram" \
-    --workdir /processed_data/ \
-    --singleEnd \
-    --tfit \
-    --prelim_process \
-    --dreg \
-    --savebidirs
 
    ```
 
@@ -142,18 +137,44 @@ FStitch can now optionally be run to segment nascent data into active and inacti
 
 Tfit (see https://github.com/Dowell-Lab/Tfit) contains an internal template matching algorithm (the `bidir` module) to generate preliminary regions to model, then will model RNAPII activity using the `model` module.
 
-Running the `--tfit` argument in the pipeline will run both of these modules in sequence. The modules may be run separately with `--tfit_prelim`, which runs the `bidir` module, or `--tfit_model` in conjunction with `--prelim_files`, which runs the `model` module on already-generated prelim files.
+The two most likely methods of running Tfit are as follows:
 
-Several optimized options are also available for running Tfit.
+   ```
+   nextflow run /Bidirectional-Flow/main.nf -profile hg38 \
+    --crams "/paths/to/*cram" \
+    --workdir /processed_data/ \
+    --singleEnd \
+    --tfit_split_model
+   ```
 
-The first is `--prelim_process`, which by default is true. This informs the pipeline to process prelim files prior to modeling by performing three steps:
+   ```
+   nextflow run /Bidirectional-Flow/main.nf -profile hg38 \
+    --crams "/paths/to/*cram" \
+    --workdir /processed_data/ \
+    --singleEnd \
+    --tfit
+   ```
+
+Running the `--tfit` argument will run both Tfit modules in sequence. Running the `--tfit_split_model` argument will run both modules, but will run the `model` module in an optimized way (implemented for DBNascent). This is detailed further in the `Split Model Run` section below.
+
+With either flag, in between running the two modules, the pipeline will by default run a prelim region processing script, detailed further in the `Prelim Processing` section below.
+
+The modules may also be run separately with `--tfit_prelim`, which runs the `bidir` module, or `--tfit_model` in conjunction with `--prelim_files`, which runs the `model` module on already-generated prelim files. For the second option, prelim processing is again run by default.
+
+### Prelim Processing
+
+`--prelim_process` is true by default. This informs the pipeline to process prelim files prior to modeling by performing three steps:
 - Add 2kb regions around annotated transcription start sites
 - Cut large prelim regions into equal-size regions less than 10kb.
 - Filter out regions that have less than 5 unique reads, as determined with `bedtools coverage`
 
-Before final model output, all modeled output regions are also filtered for coverage using the same metric. This cannot currently be turned off.
+Before final model output, all modeled output regions are also filtered for coverage using the same metric. This outputs an additional coverage filtered bedfile.
 
-The second optimization option is to run `--tfit_split_model`, which must be used with `--prelim_process=true` (default behavior). This runs two separate instances of the Tfit `model` module, specifying the model to look for up to two bidirectionals (k=2) in prelim regions <5kb in length and to look for up to five bidirectionals (k=5) in prelim regions from 5-10kb in length. Without this option (using either the `--tfit` or `--tfit_model`) flags, a single instance of the model module is called with a blanket k=5.
+### Split Model Run
+
+`--tfit_split_model` runs the Tfit `model` module in an optimized way. It must be used with `--prelim_process=true` (default behavior).
+
+This flag runs two separate instances of the Tfit `model` module, specifying the model to look for up to two bidirectionals (k=2) in prelim regions <5kb in length and to look for up to five bidirectionals (k=5) in prelim regions from 5-10kb in length. Without this option (using either the `--tfit` or `--tfit_model`) flags, a single instance of the model module is called with a blanket k=5.
 
 Please be aware that the Tfit model module may take a long time to run (5-70 hrs on mammalian datasets, depending on dataset complexity), regardless of which flag is used. The split modeling process may take less walltime, but may use as many resources due to two parallel modeling processes.
 
