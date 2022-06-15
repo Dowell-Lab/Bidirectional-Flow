@@ -19,18 +19,22 @@ Check each tool for configuration requirements.
 
 - Python3 
 
-- FStitch (optional - if running FStitch)
+- FStitch
+  (optional - if running FStitch)
   Install from https://github.com/Dowell-Lab/FStitch
 
-- Tfit (optional - if running Tfit)
+- Tfit
+  (optional - if running Tfit)
   Install from https://github.com/Dowell-Lab/Tfit
 
   Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step. On Fiji Tfit is compiled with Open MPI.
 
-- Rsubread R package (optional - if running featureCounts read counting)
+- Rsubread R package
+  (optional - if running featureCounts read counting)
   Install as user from Bioconductor https://bioconductor.org/packages/release/bioc/html/Rsubread.html
 
-- dREG (optional - if running dREG)
+- dREG
+  (optional - if running dREG)
   Install dREG from https://github.com/Danko-Lab/dREG
 
   Note: Instructions to install the dependencies for dREG can be found on their repository.
