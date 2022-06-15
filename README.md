@@ -19,7 +19,18 @@ Check each tool for configuration requirements.
 
 - Python3 
 
-- dREG
+- FStitch (optional - if running FStitch)
+  Install from https://github.com/Dowell-Lab/FStitch
+
+- Tfit (optional - if running Tfit)
+  Install from https://github.com/Dowell-Lab/Tfit
+
+  Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step. On Fiji Tfit is compiled with Open MPI.
+
+- Rsubread R package (optional - if running featureCounts read counting)
+  Install as user from Bioconductor https://bioconductor.org/packages/release/bioc/html/Rsubread.html
+
+- dREG (optional - if running dREG)
   Install dREG from https://github.com/Danko-Lab/dREG
 
   Note: Instructions to install the dependencies for dREG can be found on their repository.
@@ -34,18 +45,6 @@ Check each tool for configuration requirements.
        ftp://cbsuftp.tc.cornell.edu/danko/hub/dreg.models
 
        mammals and drosophila https://github.com/Danko-Lab/dREG-Model
-
-- FStitch
-  Install from https://github.com/Dowell-Lab/FStitch
-
-- Tfit
-  Install from https://github.com/Dowell-Lab/Tfit
-
-  Note: FStitch and Tfit also require MPI (Open MPI or MPICH) and GCC for the configuration step. On Fiji Tfit is compiled with Open MPI.
-
-- Rsubread R package (for featureCounts read counting)
-  Install as user from Bioconductor https://bioconductor.org/packages/release/bioc/html/Rsubread.html
-
 
 ## Configuration Files
 
@@ -155,9 +154,9 @@ The two most likely methods of running Tfit are as follows:
     --tfit
    ```
 
-Running the `--tfit` argument will run both Tfit modules in sequence. Running the `--tfit_split_model` argument will run both modules, but will run the `model` module in an optimized way (implemented for DBNascent). This is detailed further in the `Split Model Run` section below.
+Running the `--tfit` argument will run both Tfit modules in sequence. Running the `--tfit_split_model` argument will run both modules, but will run the `model` module in an optimized way (implemented for DBNascent). This is detailed further in the "Split Model Run" section below.
 
-With either flag, in between running the two modules, the pipeline will by default run a prelim region processing script, detailed further in the `Prelim Processing` section below.
+With either flag, in between running the two modules, the pipeline will by default run a prelim region processing script, detailed further in the "Prelim Processing" section below.
 
 The modules may also be run separately with `--tfit_prelim`, which runs the `bidir` module, or `--tfit_model` in conjunction with `--prelim_files`, which runs the `model` module on already-generated prelim files. For the second option, prelim processing is again run by default.
 
