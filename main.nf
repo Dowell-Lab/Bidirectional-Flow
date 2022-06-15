@@ -989,9 +989,9 @@ process dreg_postprocess {
 
 // PART 7: Running stats on tfit/dreg outputs
 
-if (params.savestats) {
+if (params.savestats && (params.tfit || params.tfit_model || params.tfit_split_model)) {
 
-  println "[Log 7]: Getting bidir stats"
+  println "[Log 7]: Getting tfit bidir stats"
 
   process calculate_tfit_stats {
       tag "$prefix"
@@ -1003,7 +1003,7 @@ if (params.savestats) {
 
       publishDir "${params.outdir}" , mode: 'copy',
       saveAs: {filename ->
-               if (params.savebidirs && (filename.indexOf("${prefix}.tfit.") > 0))       "tfit_subsets/$filename"
+               if (params.savebidirs && (filename.indexOf(".tfit.") > 0))       "tfit_subsets/$filename"
                else null
               }
 
@@ -1047,6 +1047,36 @@ if (params.savestats) {
       """
   }
 
+  process accumulate_tfit_stats {
+      tag "tfit_stats"
+      memory '1 GB'
+      time '1h'
+      cpus 1
+      queue 'short'
+      stageInMode 'copy'
+
+      publishDir "${params.outdir}/bidir_summary" , mode: 'copy', pattern: "tfit_stats.txt"
+
+      when:
+      params.tfit || params.tfit_split_model || params.tfit_model
+
+      input:
+      file ('*') from tfit_stats.collect()
+
+      output:
+      file ("tfit_stats.txt") into tfit_stats_accum
+
+      script:
+      """
+      printf "sample_id\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
+      > tfit_stats.txt
+      cat *.tfit_stats.txt >> tfit_stats.txt
+
+      """
+  }
+
+} else if (params.savestats && (params.dreg || params.dreg_results)) {
+
   process calculate_dreg_stats {
       tag "$prefix"
       memory '8 GB'
@@ -1057,7 +1087,7 @@ if (params.savestats) {
 
       publishDir "${params.outdir}" , mode: 'copy',
       saveAs: {filename ->
-               if (params.savebidirs && (filename.indexOf("${prefix}.dreg.") > 0))       "dreg_subsets/$filename"
+               if (params.savebidirs && (filename.indexOf(".dreg.") > 0))       "dreg_subsets/$filename"
                else null
               }
 
@@ -1098,34 +1128,6 @@ if (params.savestats) {
           \$(wc -l ${prefix}.dreg.intergenic_regions.bed | awk '{print \$1}') \
           \$gc_prop \
           > ${prefix}.dreg_stats.txt
-      """
-  }
-
-  process accumulate_tfit_stats {
-      tag "tfit_stats"
-      memory '1 GB'
-      time '1h'
-      cpus 1
-      queue 'short'
-      stageInMode 'copy'
-
-      publishDir "${params.outdir}/bidir_summary" , mode: 'copy', pattern: "tfit_stats.txt"
-
-      when:
-      params.tfit || params.tfit_split_model || params.tfit_model
-
-      input:
-      file ('*') from tfit_stats.collect()
-
-      output:
-      file ("tfit_stats.txt") into tfit_stats_accum
-
-      script:
-      """
-      printf "sample_id\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
-      > tfit_stats.txt
-      cat *.tfit_stats.txt >> tfit_stats.txt
-
       """
   }
 
