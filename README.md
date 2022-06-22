@@ -78,6 +78,10 @@ FStitch can now optionally be run to segment nascent data into active and inacti
   pip3 install fstitch-annotate --user
   ```
 
+## Mapped file inputs
+
+In order to run Tfit, our best practices filter CRAM/BAM files for multimapped reads based on the NH:i: field. The Tfit portion of the pipeline will not work properly for mappers that do not output this field, such as Bowtie2. If you have mapped files that do not contain this tag, you can filter based on the XS:i: tag. This involves switching which version of the script is commented out (using // comment characters) within the `bam_conversion_tfit` process.
+
 ## Loading requirements on SLURM
 
   Below is a summary of all FIJI modules needed to run Bidirectional-Flow. The R version you use depends on which version used for installing packages in user accounts.
