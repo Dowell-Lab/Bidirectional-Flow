@@ -242,21 +242,21 @@ process bam_conversion_tfit {
    output:
    tuple val(prefix), file("${prefix}.mmfilt.sorted.bam"), file("${prefix}.mmfilt.sorted.bam.bai") into bam_for_tfit
 
-//   script:
-//   """
-//   samtools view -@ 16 -h -q 1 ${bam} | \
-//       grep -P '(NH:i:1|^@)' | \
-//       samtools view -h -b > ${prefix}.mmfilt.sorted.bam
-//   samtools index ${prefix}.mmfilt.sorted.bam ${prefix}.mmfilt.sorted.bam.bai
-//   """
-
    script:
    """
    samtools view -@ 16 -h -q 1 ${bam} | \
-       grep -v 'XS:i' | \
+       grep -P '(NH:i:1|^@)' | \
        samtools view -h -b > ${prefix}.mmfilt.sorted.bam
    samtools index ${prefix}.mmfilt.sorted.bam ${prefix}.mmfilt.sorted.bam.bai
    """
+
+//   script:
+//   """
+//   samtools view -@ 16 -h -q 1 ${bam} | \
+//       grep -v 'XS:i' | \
+//       samtools view -h -b > ${prefix}.mmfilt.sorted.bam
+//   samtools index ${prefix}.mmfilt.sorted.bam ${prefix}.mmfilt.sorted.bam.bai
+//   """
 
 }
 
