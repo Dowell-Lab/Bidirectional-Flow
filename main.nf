@@ -959,13 +959,10 @@ if (params.dreg_results) {
     dreg_res_process = dreg_bg
         .join(dREG_out)
 
-} else {
-
-    dreg_res_process = Channel.create()
-
 }
 
-process dreg_postprocess {
+if (params.dreg_results || params.dreg) {
+  process dreg_postprocess {
     println "Log[6]: Running dREG postprocessing"
 
     tag "$prefix"
@@ -994,15 +991,18 @@ process dreg_postprocess {
         awk '{if (\$4 > 9) print \$0}' ${prefix}.dREG.bidir.cov.bed > ${prefix}.dREG.full.covfiltered.bed
         gzip ${prefix}.dREG.peak.full.bed
         """
+  }
 }
 
 // PART 7: Running stats on tfit/dreg outputs
 
-if (params.savestats && (params.tfit || params.tfit_model || params.tfit_split_model)) {
+if (params.savestats) {
 
-  println "[Log 7]: Getting tfit bidir stats"
+  if (params.tfit || params.tfit_model || params.tfit_split_model) {
 
-  process calculate_tfit_stats {
+    println "[Log 7]: Getting tfit bidir stats"
+
+    process calculate_tfit_stats {
       tag "$prefix"
       memory '8 GB'
       time '1h'
@@ -1054,9 +1054,9 @@ if (params.savestats && (params.tfit || params.tfit_model || params.tfit_split_m
           \$gc_prop \
           > ${prefix}.tfit_stats.txt
       """
-  }
+    }
 
-  process accumulate_tfit_stats {
+    process accumulate_tfit_stats {
       tag "tfit_stats"
       memory '1 GB'
       time '1h'
@@ -1082,11 +1082,11 @@ if (params.savestats && (params.tfit || params.tfit_model || params.tfit_split_m
       cat *.tfit_stats.txt >> tfit_stats.txt
 
       """
-  }
+    }
 
-} else if (params.savestats && (params.dreg || params.dreg_results)) {
+  } else if (params.dreg || params.dreg_results) {
 
-  process calculate_dreg_stats {
+    process calculate_dreg_stats {
       tag "$prefix"
       memory '8 GB'
       time '1h'
@@ -1138,9 +1138,9 @@ if (params.savestats && (params.tfit || params.tfit_model || params.tfit_split_m
           \$gc_prop \
           > ${prefix}.dreg_stats.txt
       """
-  }
+    }
 
-  process accumulate_dreg_stats {
+    process accumulate_dreg_stats {
       tag "dreg_stats"
       memory '1 GB'
       time '1h'
@@ -1166,10 +1166,13 @@ if (params.savestats && (params.tfit || params.tfit_model || params.tfit_split_m
       cat *.dreg_stats.txt >> dreg_stats.txt
 
       """
+    }
+    println "[Log 7]: Finished with bidir stats"
+
+  } else {
+    null
+
   }
-
-  println "[Log 7]: Finished with bidir stats"
-
 }
 
 // PART 8: Counting over genes
@@ -1332,7 +1335,7 @@ println "[Log 8]: Done Running FeatureCounts\n"
 // PART 9: Counting over bidirectionals
 
 process bidirectional_count {
-   println "[Log 9]: Running FeatureCounts over bidirs"
+    println "[Log 9]: Running FeatureCounts over bidirs"
 
     tag "$prefix"
     memory '8 GB'
@@ -1363,9 +1366,7 @@ process bidirectional_count {
 
     library("Rsubread")
 
-    bidir_table <- read.table("${params.bidir_accum}")
-
-    if (${paired} == 'FALSE') {
+    saf_table <- read.table("${params.bidir_accum}", header=TRUE)
 
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.bidir_accum}",
@@ -1377,14 +1378,12 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=1,
         nthreads=8)
-    fc\$annotation["BidirID"] <- bidir_table["V4"]
-    write.table(x=data.frame(fc\$annotation[,c("BidirID","Length")],
+    fc\$annotation["Source"] <- saf_table["Source"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
                              fc\$counts,stringsAsFactors=FALSE),
-        file=paste0("${prefix}",".stranded.bidir_counts.txt"),
+        file=paste0("${prefix}",".pos.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
-
-    } else {
 
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.bidir_accum}",
@@ -1396,14 +1395,12 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=2,
         nthreads=8)
-    fc\$annotation["BidirID"] <- gtf_table["V4"]
-    write.table(x=data.frame(fc\$annotation[,c("BidirID","Length")],
+    fc\$annotation["Source"] <- saf_table["Source"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
                              fc\$counts,stringsAsFactors=FALSE),
-        file=paste0("${prefix}",".stranded.bidir_counts.txt"),
+        file=paste0("${prefix}",".neg.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
-
-    }
 
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.bidir_accum}",
@@ -1415,18 +1412,18 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
-    fc\$annotation["BidirID"] <- gtf_table["V4"]
-    write.table(x=data.frame(fc\$annotation[,c("BidirID","Length")],
+    fc\$annotation["Source"] <- saf_table["Source"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
                              fc\$counts,stringsAsFactors=FALSE),
         file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
     """
+
 }
 
 println "[Log 9]: Done Running FeatureCounts\n"
-
 
 /*
  * Completion report
