@@ -600,7 +600,7 @@ if (params.tfit_split_model) {
 
         tag "$prefix"
         memory '70 GB'
-        time '160h'
+        time '96h'
         queue 'long'
         clusterOptions = '-N 1 -n 32'
 
