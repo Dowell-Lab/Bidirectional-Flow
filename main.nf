@@ -1077,7 +1077,7 @@ if (params.savestats) {
 
       script:
       """
-      printf "sample_id\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
+      printf "sample_name\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
       > tfit_stats.txt
       cat *.tfit_stats.txt >> tfit_stats.txt
 
@@ -1161,7 +1161,7 @@ if (params.savestats) {
 
       script:
       """
-      printf "sample_id\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
+      printf "sample_name\tnum_tfit_bidir\tnum_tfit_bidir_promoter\tnum_tfit_bidir_intronic\tnum_tfit_bidir_intergenic\ttfit_bidir_gc\n" \
       > dreg_stats.txt
       cat *.dreg_stats.txt >> dreg_stats.txt
 
