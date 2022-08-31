@@ -11,7 +11,8 @@ This pipeline is built on top of and is an expansion of the Nascent-Flow pipelin
 
 Check each tool for configuration requirements.
 
-- Nextflow (version >= 19.10.0)
+- Nextflow (version >= 19.10.0, but the latest versions also appear to cause difficulties)
+  You can easily run an older version of nextflow without reinstalling by specifying in the nextflow command, i.e. `NXF_VER=19.10.0 nextflow run ...`
 
 - SAMtools
 
