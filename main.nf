@@ -1203,6 +1203,11 @@ process gene_count {
         paired = 'FALSE'
     } else {
         paired = 'TRUE'
+        if (params.forwardStranded) {
+            strand_specific = 1
+        } else {
+            strand_specific = 2
+        }
     }
     
     """
@@ -1250,6 +1255,44 @@ process gene_count {
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.filtered_refseq}",
+        isGTFAnnotationFile=TRUE,
+        GTF.featureType="gene_length",
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=TRUE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=0,
+        nthreads=8)
+    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".unstranded.gene_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    gtf_table <- read.table("${params.trunc_refseq}")
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.trunc_refseq}",
+        isGTFAnnotationFile=TRUE,
+        GTF.featureType="gene_length",
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=TRUE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        strandSpecific=0,
+        nthreads=8)
+    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".unstranded.5ptrunc_gene_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
     } else {
 
     fc <- featureCounts(files="${bam_file}",
@@ -1261,7 +1304,8 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        strandSpecific=2,
+        countReadPairs=TRUE,
+        strandSpecific=${strand_specific},
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
     write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
@@ -1279,7 +1323,8 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        strandSpecific=2,
+        countReadPairs=TRUE,
+        strandSpecific=${strand_specific},
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
     write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
@@ -1287,8 +1332,6 @@ process gene_count {
         file=paste0("${prefix}",".stranded.5ptrunc_gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
-
-    }
 
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.filtered_refseq}",
@@ -1299,6 +1342,7 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
+        countReadPairs=TRUE,
         strandSpecific=0,
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
@@ -1319,6 +1363,7 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
+        countReadPairs=TRUE,
         strandSpecific=0,
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
@@ -1327,7 +1372,7 @@ process gene_count {
         file=paste0("${prefix}",".unstranded.5ptrunc_gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
-    
+    }   
     """
 }
 
@@ -1360,6 +1405,11 @@ process bidirectional_count {
         paired = 'FALSE'
     } else {
         paired = 'TRUE'
+        if (params.forwardStranded) {
+            strand_specific = 1
+        } else {
+            strand_specific = 2
+        }
     }
 
     """
@@ -1369,6 +1419,7 @@ process bidirectional_count {
 
     saf_table <- read.table("${params.bidir_accum}", header=TRUE)
 
+    if (${paired} == 'FALSE') {
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.bidir_accum}",
         isGTFAnnotationFile=FALSE,
@@ -1419,6 +1470,64 @@ process bidirectional_count {
         file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
+
+    } else {
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.bidir_accum}",
+        isGTFAnnotationFile=FALSE,
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=FALSE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        countReadPairs=TRUE,
+        strandSpecific=${strand_specific},
+        nthreads=8)
+    fc\$annotation["Source"] <- saf_table["Source"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".pos.bidir_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.bidir_accum}",
+        isGTFAnnotationFile=FALSE,
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=FALSE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        countReadPairs=TRUE,
+        strandSpecific=${strand_specific},
+        nthreads=8)
+    fc\$annotation["Source"] <- saf_table["Source"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".neg.bidir_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    fc <- featureCounts(files="${bam_file}",
+        annot.ext="${params.bidir_accum}",
+        isGTFAnnotationFile=FALSE,
+        useMetaFeatures=FALSE,
+        allowMultiOverlap=FALSE,
+        largestOverlap=TRUE,
+        countMultiMappingReads=FALSE,
+        isPairedEnd=${paired},
+        countReadPairs=TRUE,
+        strandSpecific=0,
+        nthreads=8)
+    fc\$annotation["Source"] <- saf_table["Source"]
+    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
+                             fc\$counts,stringsAsFactors=FALSE),
+        file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
+        quote=FALSE,sep="\t",
+        row.names=FALSE)
+
+    }
 
     """
 
