@@ -40,7 +40,7 @@ def helpMessage() {
 
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
-        --r1_five_prime		       If input file is paired, specifies if read 1 has the 5 prime end (default R2 is five prime, must be manually determined)
+        --forwardStranded	       If input file is paired, specifies if read 1 has the 5 prime end (default R2 is five prime, must be manually determined)
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
@@ -316,26 +316,13 @@ process bedgraphs {
         > ${prefix}.bedGraph
 
     """
-    } else {
+    } else if (params.forwardStranded) {
     """
     samtools view \
         -h -b -f 0x0040 \
         ${bam_file} \
         > ${prefix}.first_pair.bam
 
-    samtools view \
-        -h -b -f 0x0080 \
-        ${bam_file} \
-        > ${prefix}.second_pair.bam
-
-    genomeCoverageBed \
-        -bg \
-        -split \
-        -strand - \
-        -g ${params.chrom_sizes} \
-        -ibam ${prefix}.first_pair.bam \
-        | sortBed \
-        > ${prefix}.first_pair.pos.bedGraph
     genomeCoverageBed \
         -bg \
         -split \
@@ -343,35 +330,15 @@ process bedgraphs {
         -g ${params.chrom_sizes} \
         -ibam ${prefix}.first_pair.bam \
         | sortBed \
-        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
-        > ${prefix}.first_pair.neg.bedGraph
-
-    genomeCoverageBed \
-        -bg \
-        -split \
-        -strand + \
-        -g ${params.chrom_sizes} \
-        -ibam ${prefix}.second_pair.bam \
-        | sortBed \
-        > ${prefix}.second_pair.pos.bedGraph
-    genomeCoverageBed \
-        -bg \
-        -split \
-        -strand - \
-        -g ${params.chrom_sizes} \
-        -ibam ${prefix}.second_pair.bam \
-        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
-        | sortBed \
-        > ${prefix}.second_pair.neg.bedGraph
-
-    unionBedGraphs \
-        -i ${prefix}.first_pair.pos.bedGraph ${prefix}.second_pair.pos.bedGraph \
-        | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
         > ${prefix}.pos.bedGraph
-
-    unionBedGraphs \
-        -i ${prefix}.first_pair.neg.bedGraph ${prefix}.second_pair.neg.bedGraph \
-        | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand - \
+        -g ${params.chrom_sizes} \
+        -ibam ${prefix}.first_pair.bam \
+        | sortBed \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
         > ${prefix}.neg.bedGraph
 
     cat ${prefix}.pos.bedGraph \
@@ -382,6 +349,39 @@ process bedgraphs {
         -i ${prefix}.unsorted.bedGraph \
         > ${prefix}.bedGraph
 
+    """
+    } else {
+    """
+    samtools view \
+        -h -b -f 0x0080 \
+        ${bam_file} \
+        > ${prefix}.first_pair.bam
+
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand + \
+        -g ${params.chrom_sizes} \
+        -ibam ${prefix}.first_pair.bam \
+        | sortBed \
+        > ${prefix}.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand - \
+        -g ${params.chrom_sizes} \
+        -ibam ${prefix}.first_pair.bam \
+        | sortBed \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${prefix}.neg.bedGraph
+
+    cat ${prefix}.pos.bedGraph \
+        ${prefix}.neg.bedGraph \
+        > ${prefix}.unsorted.bedGraph
+
+    sortBed \
+        -i ${prefix}.unsorted.bedGraph \
+        > ${prefix}.bedGraph
     """
     }
  }
@@ -826,7 +826,7 @@ process dreg_prep {
         echo "bedGraph to bigwig done"
         """
     } else {
-        if (params.r1_five_prime) {
+        if (params.forwardStranded) {
             """
             samtools view -@ 16 -bf 0x2 ${bam_file} | samtools sort -n -@ 16 \
             > ${prefix}.dreg.bam
@@ -1084,7 +1084,9 @@ if (params.savestats) {
       """
     }
 
-  } else if (params.dreg || params.dreg_results) {
+  }
+
+  if (params.dreg || params.dreg_results) {
 
     process calculate_dreg_stats {
       tag "$prefix"
@@ -1167,12 +1169,11 @@ if (params.savestats) {
 
       """
     }
-    println "[Log 7]: Finished with bidir stats"
-
-  } else {
-    null
 
   }
+
+println "[Log 7]: Finished with bidir stats"
+
 }
 
 // PART 8: Counting over genes
