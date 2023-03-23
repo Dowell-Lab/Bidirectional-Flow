@@ -73,6 +73,7 @@ params.tfit_prelim_run = "$baseDir/bin/tfit_prelim.sh"
 params.tfit_model_run = "$baseDir/bin/tfit_model.sh"
 params.prelim_filter = "$baseDir/bin/prelim_filter.py"
 software_versions = Channel.create()
+strand_specific = 0
 
 import java.text.SimpleDateFormat
 def date = new java.util.Date()
@@ -1304,7 +1305,6 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        countReadPairs=TRUE,
         strandSpecific=${strand_specific},
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
@@ -1323,7 +1323,6 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        countReadPairs=TRUE,
         strandSpecific=${strand_specific},
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
@@ -1342,7 +1341,6 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        countReadPairs=TRUE,
         strandSpecific=0,
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
@@ -1363,7 +1361,6 @@ process gene_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        countReadPairs=TRUE,
         strandSpecific=0,
         nthreads=8)
     fc\$annotation["TranscriptID"] <- gtf_table["V13"]
@@ -1481,7 +1478,6 @@ process bidirectional_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        countReadPairs=TRUE,
         strandSpecific=${strand_specific},
         nthreads=8)
     fc\$annotation["Source"] <- saf_table["Source"]
@@ -1499,7 +1495,6 @@ process bidirectional_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        countReadPairs=TRUE,
         strandSpecific=${strand_specific},
         nthreads=8)
     fc\$annotation["Source"] <- saf_table["Source"]
@@ -1517,7 +1512,6 @@ process bidirectional_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        countReadPairs=TRUE,
         strandSpecific=0,
         nthreads=8)
     fc\$annotation["Source"] <- saf_table["Source"]
