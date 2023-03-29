@@ -74,6 +74,7 @@ params.tfit_model_run = "$baseDir/bin/tfit_model.sh"
 params.prelim_filter = "$baseDir/bin/prelim_filter.py"
 software_versions = Channel.create()
 strand_specific = 0
+neg_strand = 0
 
 import java.text.SimpleDateFormat
 def date = new java.util.Date()
@@ -1404,8 +1405,10 @@ process bidirectional_count {
         paired = 'TRUE'
         if (params.forwardStranded) {
             strand_specific = 1
+            neg_strand = 2
         } else {
             strand_specific = 2
+            neg_strand = 1
         }
     }
 
@@ -1495,7 +1498,7 @@ process bidirectional_count {
         largestOverlap=TRUE,
         countMultiMappingReads=FALSE,
         isPairedEnd=${paired},
-        strandSpecific=${strand_specific},
+        strandSpecific=${neg_strand},
         nthreads=8)
     fc\$annotation["Source"] <- saf_table["Source"]
     write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
