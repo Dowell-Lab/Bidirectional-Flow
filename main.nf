@@ -54,6 +54,7 @@ def helpMessage() {
     Analysis Options:
         --gene_count                   Run featureCounts to obtain stranded and unstranded gene counts over an annotation.
         --bidir_count                  Run featureCounts to obtain stranded and unstranded bidirectional counts over an annotation (SAF file)
+        --bedtools_count               Run bedtools coverage counting for genes. Uses a multi-mapped read-filtered bam file for counting.
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit bidir. If used, you must also specify the Tfit_path parameter.
         --tfit_prelim		       Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
@@ -109,6 +110,7 @@ summary['dREG']             = params.dreg ? 'YES' : 'NO'
 summary['dREG postprocess'] = params.dreg ? 'YES' : params.dreg_results ? 'YES' : 'NO'
 summary['Gene counting']    = params.gene_count ? 'YES' : 'NO'
 summary['Bidir counting']   = params.bidir_count ? 'YES' : 'NO'
+summary['Bedtools counting'] = params.bedtools_count ? 'YES' : 'NO'
 if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
 if(params.fstitch)summary['FStitch train']    = params.fstitch_train
 if(params.tfit)summary['Tfit dir']      = params.tfit_path
@@ -236,13 +238,13 @@ process bam_conversion_tfit {
            }
 
    when:
-   params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model
+   params.tfit || params.fstitch || params.tfit_model || params.tfit_prelim || params.tfit_split_model || params.bedtools_count
 
    input:
    tuple val(prefix), file(bam), file(index) from sorted_bam_file
 
    output:
-   tuple val(prefix), file("${prefix}.mmfilt.sorted.bam"), file("${prefix}.mmfilt.sorted.bam.bai") into bam_for_tfit
+   tuple val(prefix), file("${prefix}.mmfilt.sorted.bam"), file("${prefix}.mmfilt.sorted.bam.bai") into bam_for_tfit, bam_for_bedtools_count
 
    script:
    """
@@ -252,6 +254,7 @@ process bam_conversion_tfit {
    samtools index ${prefix}.mmfilt.sorted.bam ${prefix}.mmfilt.sorted.bam.bai
    """
 
+// For use with bowtie mapper, which outputs different flag for multimapped
 //   script:
 //   """
 //   samtools view -@ 16 -h -q 1 ${bam} | \
@@ -1185,7 +1188,7 @@ process gene_count {
 
     tag "$prefix"
     memory '8 GB'
-    time '3h'
+    time '2h'
     cpus 8
     queue 'short'
 
@@ -1217,14 +1220,19 @@ process gene_count {
 
     library("Rsubread")
 
-    gtf_table <- read.table("${params.filtered_refseq}")   
+    gtf_table <- read.table("${params.filtered_refseq}", sep = "\t")   
+    gtf_table_trunc <- read.table("${params.trunc_refseq}", sep = "\t")
+    gtf_table["meta"] <- gsub(";","",gtf_table\$V9)
+    gtf_table["TranscriptID"] <- sapply(gtf_table\$meta,function(x) strsplit(x,split=" ")[[1]][4])
+    gtf_table_trunc["meta"] <- gsub(";","",gtf_table_trunc\$V9)
+    gtf_table_trunc["TranscriptID"] <- sapply(gtf_table_trunc\$meta,function(x) strsplit(x,split=" ")[[1]][4])
 
     if (${paired} == 'FALSE') {
 
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.filtered_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1232,9 +1240,11 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=1,
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".stranded.gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1242,7 +1252,7 @@ process gene_count {
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.trunc_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1250,9 +1260,11 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=1,
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,        
         file=paste0("${prefix}",".stranded.5ptrunc_gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1260,7 +1272,7 @@ process gene_count {
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.filtered_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1268,19 +1280,19 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,        
         file=paste0("${prefix}",".unstranded.gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
-    gtf_table <- read.table("${params.trunc_refseq}")
-
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.trunc_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1288,9 +1300,11 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".unstranded.5ptrunc_gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1300,7 +1314,7 @@ process gene_count {
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.filtered_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1308,9 +1322,11 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=${strand_specific},
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".stranded.gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1318,7 +1334,7 @@ process gene_count {
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.trunc_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1326,9 +1342,11 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=${strand_specific},
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".stranded.5ptrunc_gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1336,7 +1354,7 @@ process gene_count {
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.filtered_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1344,19 +1362,21 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".unstranded.gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE) 
 
-    gtf_table <- read.table("${params.trunc_refseq}")
+    gtf_table <- read.table("${params.trunc_refseq}", sep = "\t")
     
     fc <- featureCounts(files="${bam_file}",
         annot.ext="${params.trunc_refseq}",
         isGTFAnnotationFile=TRUE,
-        GTF.featureType="gene_length",
+        GTF.featureType="transcript",
         useMetaFeatures=FALSE,
         allowMultiOverlap=TRUE,
         largestOverlap=TRUE,
@@ -1364,9 +1384,11 @@ process gene_count {
         isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
-    fc\$annotation["TranscriptID"] <- gtf_table["V13"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
+    output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("gene_id","transcript_id","length","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".unstranded.5ptrunc_gene_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1376,6 +1398,66 @@ process gene_count {
 
 println "[Log 8]: Done Running FeatureCounts\n"
 
+
+process bedtools_count {
+   println "[Log 8]: Running Bedtools coverage"
+
+    tag "$prefix"
+    memory '80 GB'
+    time '2h'
+    cpus 1
+    queue 'short'
+
+    publishDir "${params.outdir}/bedtools_cov_genes/", mode: 'copy', pattern: "*coverage.bed"
+
+    when:
+    params.bedtools_count
+
+    input:
+    tuple val(prefix), file(mmfiltbam), file(index) from bam_for_bedtools_count
+
+    output:
+    tuple val(prefix), file ("*coverage.bed") into bedtools_count_out
+
+    script:
+    if (params.singleEnd && params.reverseStranded) {
+        strand_run1 = '-S'
+        strand_run2 = '-s'
+    } else if (params.singleEnd) {
+        strand_run1 = '-s'
+        strand_run2 = '-S'
+    } else if (params.forwardStranded) {
+        strand_run1 = '-s'
+        strand_run2 = '-S'
+    } else {
+        strand_run1 = '-S'
+        strand_run2 = '-s'
+    }
+
+    if (params.singleEnd) {
+    """
+    bedtools coverage ${strand_run1} -a ${params.filtered_refseq_bed} -b ${mmfiltbam} > ${prefix}.sense.coverage.bed
+    bedtools coverage ${strand_run2} -a ${params.filtered_refseq_bed} -b ${mmfiltbam} > ${prefix}.antisense.coverage.bed
+    bedtools coverage ${strand_run1} -a ${params.trunc_refseq_bed} -b ${mmfiltbam} > ${prefix}.sense.5ptrunc_coverage.bed
+    bedtools coverage ${strand_run2} -a ${params.trunc_refseq_bed} -b ${mmfiltbam} > ${prefix}.antisense.5ptrunc_coverage.bed
+    """
+    } else {
+    """
+    samtools view \
+        -h -b -f 0x0040 \
+        ${mmfiltbam} \
+        > ${prefix}.first_pair.bam
+    bedtools coverage ${strand_run1} -a ${params.filtered_refseq_bed} -b ${prefix}.first_pair.bam > ${prefix}.sense.coverage.bed
+    bedtools coverage ${strand_run2} -a ${params.filtered_refseq_bed} -b ${prefix}.first_pair.bam > ${prefix}.antisense.coverage.bed
+    bedtools coverage ${strand_run1} -a ${params.trunc_refseq_bed} -b ${prefix}.first_pair.bam > ${prefix}.sense.5ptrunc_coverage.bed
+    bedtools coverage ${strand_run2} -a ${params.trunc_refseq_bed} -b ${prefix}.first_pair.bam > ${prefix}.antisense.5ptrunc_coverage.bed
+    """
+    }
+}
+
+println "[Log 8]: Done Running Bedtools counts\n"
+
+
 // PART 9: Counting over bidirectionals
 
 process bidirectional_count {
@@ -1383,7 +1465,7 @@ process bidirectional_count {
 
     tag "$prefix"
     memory '8 GB'
-    time '3h'
+    time '2h'
     cpus 8
     queue 'short'
 
@@ -1430,9 +1512,10 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=1,
         nthreads=8)
-    fc\$annotation["Source"] <- saf_table["Source"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    output <- data.frame(fc\$annotation[,c("GeneID")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("bidir_id","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".pos.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1447,9 +1530,10 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=2,
         nthreads=8)
-    fc\$annotation["Source"] <- saf_table["Source"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    output <- data.frame(fc\$annotation[,c("GeneID")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("bidir_id","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".neg.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1464,9 +1548,10 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
-    fc\$annotation["Source"] <- saf_table["Source"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    output <- data.frame(fc\$annotation[,c("GeneID")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("bidir_id","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1483,9 +1568,10 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=${strand_specific},
         nthreads=8)
-    fc\$annotation["Source"] <- saf_table["Source"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    output <- data.frame(fc\$annotation[,c("GeneID")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("bidir_id","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".pos.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1500,9 +1586,10 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=${neg_strand},
         nthreads=8)
-    fc\$annotation["Source"] <- saf_table["Source"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    output <- data.frame(fc\$annotation[,c("GeneID")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("bidir_id","${prefix}_counts")
+    write.table(output,        
         file=paste0("${prefix}",".neg.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
@@ -1517,9 +1604,10 @@ process bidirectional_count {
         isPairedEnd=${paired},
         strandSpecific=0,
         nthreads=8)
-    fc\$annotation["Source"] <- saf_table["Source"]
-    write.table(x=data.frame(fc\$annotation[,c("GeneID","Source")],
-                             fc\$counts,stringsAsFactors=FALSE),
+    output <- data.frame(fc\$annotation[,c("GeneID")],
+                             fc\$counts,stringsAsFactors=FALSE)
+    colnames(output) <- c("bidir_id","${prefix}_counts")
+    write.table(output,
         file=paste0("${prefix}",".unstranded.bidir_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
