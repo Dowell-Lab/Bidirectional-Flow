@@ -1201,7 +1201,7 @@ process gene_count {
     tuple val(prefix), file(bam_file), file(index) from bam_for_gene_counting
 
     output:
-    tuple val(prefix), file ("*counts.txt") into gene_count_out
+    file("*counts.txt") into gene_count_out
 
     script:
     if (params.singleEnd) {
@@ -1214,8 +1214,6 @@ process gene_count {
             strand_specific = 2
         }
     }
-    prefix_cut = prefix.split(".")[0]
-    
     """
     #!/usr/bin/env Rscript
 
@@ -1227,6 +1225,9 @@ process gene_count {
     gtf_table["TranscriptID"] <- sapply(gtf_table\$meta,function(x) strsplit(x,split=" ")[[1]][4])
     gtf_table_trunc["meta"] <- gsub(";","",gtf_table_trunc\$V9)
     gtf_table_trunc["TranscriptID"] <- sapply(gtf_table_trunc\$meta,function(x) strsplit(x,split=" ")[[1]][4])
+    prefix_base <- "${prefix}"
+    prefix <- strsplit(prefix_base,split="[.]")[[1]][1]
+    countcol <- paste0(prefix,"_counts")
 
     if (${paired} == 'FALSE') {
 
@@ -1244,9 +1245,9 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".all.gene.stranded_counts.txt"),
+        file=paste0(prefix,".all.gene.stranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1264,9 +1265,9 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,        
-        file=paste0("${prefix_cut}",".all.5ptrunc_gene.stranded_counts.txt"),
+        file=paste0(prefix,".all.5ptrunc_gene.stranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1284,9 +1285,9 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,        
-        file=paste0("${prefix_cut}",".all.gene.unstranded_counts.txt"),
+        file=paste0(prefix,".all.gene.unstranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1304,9 +1305,9 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".all.5ptrunc_gene.unstranded_counts.txt"),
+        file=paste0(prefix,".all.5ptrunc_gene.unstranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1326,9 +1327,9 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".all.gene.stranded_counts.txt"),
+        file=paste0(prefix,".all.gene.stranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1346,9 +1347,9 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".all.5ptrunc_gene.stranded_counts.txt"),
+        file=paste0(prefix,".all.5ptrunc_gene.stranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1366,9 +1367,9 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".all.gene.unstranded_counts.txt"),
+        file=paste0(prefix,".all.gene.unstranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE) 
 
@@ -1388,19 +1389,40 @@ process gene_count {
     fc\$annotation["TranscriptID"] <- gtf_table_trunc["TranscriptID"]
     output <- data.frame(fc\$annotation[,c("GeneID","TranscriptID","Length")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("gene_id","transcript_id","length","${prefix_cut}_counts")
+    colnames(output) <- c("gene_id","transcript_id","length",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".all.5ptrunc_gene.unstranded_counts.txt"),
+        file=paste0(prefix,".all.5ptrunc_gene.unstranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
     }   
     """
+}
+process gene_count_filter {
+    tag "gene_count_filter"
+    memory '1 GB'
+    time '5m'
+    cpus 1
+    queue 'short'
+    stageInMode 'copy'
+
+    publishDir "${params.outdir}/featurecounts_genes/", mode: 'copy', pattern: "*.filt.*"
+
+    when:
+    params.gene_count
+
+    input:
+    file('*') from gene_count_out.collect()
+
+    output:
+    file("*.filt.*") into filtered_count_out
+
+    script:
     """
-    #!/bin/bash
-    grep -G N[A-Z]_ ${prefix_cut}.all.gene.stranded_counts.txt > ${prefix_cut}.filt.gene.stranded_counts.txt
-    grep -G N[A-Z]_ ${prefix_cut}.all.gene.unstranded_counts.txt > ${prefix_cut}.filt.gene.unstranded_counts.txt
-    grep -G N[A-Z]_ ${prefix_cut}.all.5ptrunc_gene.stranded_counts.txt > ${prefix_cut}.filt.5ptrunc_gene.stranded_counts.txt
-    grep -G N[A-Z]_ ${prefix_cut}.all.5ptrunc_gene.unstranded_counts.txt > ${prefix_cut}.filt.5ptrunc_gene.unstranded_counts.txt
+    for countfile in ./*.all.*; do
+      newfile=\$(echo "\$countfile" | sed -e 's/all/filt/')
+      head -1 "\$countfile" > "\$newfile"
+      grep -G N[A-Z]_ "\$countfile" >> "\$newfile"
+    done
     """
 }
 
@@ -1441,33 +1463,34 @@ process bedtools_count {
         strand_run1 = '-S'
         strand_run2 = '-s'
     }
-    prefix_cut = prefix.split(".")[0]
 
     if (params.singleEnd) {
     """
-    bedtools coverage ${strand_run1} -a ${params.filtered_refseq_bed} -b ${mmfiltbam} > ${prefix_cut}.all.gene.sense_counts.bed
-    bedtools coverage ${strand_run2} -a ${params.filtered_refseq_bed} -b ${mmfiltbam} > ${prefix_cut}.all.gene.antisense_counts.bed
-    bedtools coverage ${strand_run1} -a ${params.trunc_refseq_bed} -b ${mmfiltbam} > ${prefix_cut}.all.5ptrunc_gene.sense_counts.bed
-    bedtools coverage ${strand_run2} -a ${params.trunc_refseq_bed} -b ${mmfiltbam} > ${prefix_cut}.all.5ptrunc_gene.antisense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.gene.sense_counts.bed > ${prefix_cut}.filt.gene.sense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.gene.antisense_counts.bed > ${prefix_cut}.filt.gene.antisense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.5ptrunc_gene.sense_counts.bed > ${prefix_cut}.filt.5ptrunc_gene.sense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.5ptrunc_gene.antisense_counts.bed > ${prefix_cut}.filt.5ptrunc_gene.antisense_counts.bed
+    base=\$(echo ${prefix} | awk -F "." '{print \$1}')
+    bedtools coverage ${strand_run1} -a ${params.filtered_refseq_bed} -b ${mmfiltbam} > "\$base".all.gene.sense_counts.bed
+    bedtools coverage ${strand_run2} -a ${params.filtered_refseq_bed} -b ${mmfiltbam} > "\$base".all.gene.antisense_counts.bed
+    bedtools coverage ${strand_run1} -a ${params.trunc_refseq_bed} -b ${mmfiltbam} > "\$base".all.5ptrunc_gene.sense_counts.bed
+    bedtools coverage ${strand_run2} -a ${params.trunc_refseq_bed} -b ${mmfiltbam} > "\$base".all.5ptrunc_gene.antisense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.gene.sense_counts.bed > "\$base".filt.gene.sense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.gene.antisense_counts.bed > "\$base".filt.gene.antisense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.5ptrunc_gene.sense_counts.bed > "\$base".filt.5ptrunc_gene.sense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.5ptrunc_gene.antisense_counts.bed > "\$base".filt.5ptrunc_gene.antisense_counts.bed
     """
     } else {
     """
+    base=\$(echo ${prefix} | awk -F "." '{print \$1}')
     samtools view \
         -h -b -f 0x0040 \
         ${mmfiltbam} \
-        > ${prefix_cut}.first_pair.bam
-    bedtools coverage ${strand_run1} -a ${params.filtered_refseq_bed} -b ${prefix_cut}.first_pair.bam > ${prefix_cut}.all.gene.sense_counts.bed
-    bedtools coverage ${strand_run2} -a ${params.filtered_refseq_bed} -b ${prefix_cut}.first_pair.bam > ${prefix_cut}.all.gene.antisense_counts.bed
-    bedtools coverage ${strand_run1} -a ${params.trunc_refseq_bed} -b ${prefix_cut}.first_pair.bam > ${prefix_cut}.all.5ptrunc_gene.sense_counts.bed
-    bedtools coverage ${strand_run2} -a ${params.trunc_refseq_bed} -b ${prefix_cut}.first_pair.bam > ${prefix_cut}.all.5ptrunc_gene.antisense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.gene.sense_counts.bed > ${prefix_cut}.filt.gene.sense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.gene.antisense_counts.bed > ${prefix_cut}.filt.gene.antisense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.5ptrunc_gene.sense_counts.bed > ${prefix_cut}.filt.5ptrunc_gene.sense_counts.bed
-    grep -G N[A-Z]_ ${prefix_cut}.all.5ptrunc_gene.antisense_counts.bed > ${prefix_cut}.filt.5ptrunc_gene.antisense_counts.bed
+        > "\$base".first_pair.bam
+    bedtools coverage ${strand_run1} -a ${params.filtered_refseq_bed} -b "\$base".first_pair.bam > "\$base".all.gene.sense_counts.bed
+    bedtools coverage ${strand_run2} -a ${params.filtered_refseq_bed} -b "\$base".first_pair.bam > "\$base".all.gene.antisense_counts.bed
+    bedtools coverage ${strand_run1} -a ${params.trunc_refseq_bed} -b "\$base".first_pair.bam > "\$base".all.5ptrunc_gene.sense_counts.bed
+    bedtools coverage ${strand_run2} -a ${params.trunc_refseq_bed} -b "\$base".first_pair.bam > "\$base".all.5ptrunc_gene.antisense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.gene.sense_counts.bed > "\$base".filt.gene.sense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.gene.antisense_counts.bed > "\$base".filt.gene.antisense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.5ptrunc_gene.sense_counts.bed > "\$base".filt.5ptrunc_gene.sense_counts.bed
+    grep -G N[A-Z]_ "\$base".all.5ptrunc_gene.antisense_counts.bed > "\$base".filt.5ptrunc_gene.antisense_counts.bed
     """
     }
 }
@@ -1510,7 +1533,6 @@ process bidirectional_count {
             neg_strand = 1
         }
     }
-    prefix_cut = prefix_base.split(".")[0]
 
     """
     #!/usr/bin/env Rscript
@@ -1518,6 +1540,9 @@ process bidirectional_count {
     library("Rsubread")
 
     saf_table <- read.table("${params.bidir_accum}", header=TRUE)
+    prefix_base <- "${prefix}"
+    prefix <- strsplit(prefix_base,split="[.]")[[1]][1]
+    countcol <- paste0(prefix,"_counts")
 
     if (${paired} == 'FALSE') {
     fc <- featureCounts(files="${bam_file}",
@@ -1532,9 +1557,9 @@ process bidirectional_count {
         nthreads=8)
     output <- data.frame(fc\$annotation[,c("GeneID")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("bidir_id","${prefix_cut}_counts")
+    colnames(output) <- c("bidir_id",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".bidir.pos_counts.txt"),
+        file=paste0(prefix,".bidir.pos_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1550,9 +1575,9 @@ process bidirectional_count {
         nthreads=8)
     output <- data.frame(fc\$annotation[,c("GeneID")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("bidir_id","${prefix_cut}_counts")
+    colnames(output) <- c("bidir_id",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".bidir.neg_counts.txt"),
+        file=paste0(prefix,".bidir.neg_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1568,9 +1593,9 @@ process bidirectional_count {
         nthreads=8)
     output <- data.frame(fc\$annotation[,c("GeneID")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("bidir_id","${prefix_cut}_counts")
+    colnames(output) <- c("bidir_id",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".bidir.unstranded_counts.txt"),
+        file=paste0(prefix,".bidir.unstranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1588,9 +1613,9 @@ process bidirectional_count {
         nthreads=8)
     output <- data.frame(fc\$annotation[,c("GeneID")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("bidir_id","${prefix_cut}_counts")
+    colnames(output) <- c("bidir_id",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".bidir.pos_counts.txt"),
+        file=paste0(prefix,".bidir.pos_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1606,9 +1631,9 @@ process bidirectional_count {
         nthreads=8)
     output <- data.frame(fc\$annotation[,c("GeneID")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("bidir_id","${prefix_cut}_counts")
+    colnames(output) <- c("bidir_id",countcol)
     write.table(output,        
-        file=paste0("${prefix_cut}",".bidir.neg_counts.txt"),
+        file=paste0(prefix,".bidir.neg_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
@@ -1624,9 +1649,9 @@ process bidirectional_count {
         nthreads=8)
     output <- data.frame(fc\$annotation[,c("GeneID")],
                              fc\$counts,stringsAsFactors=FALSE)
-    colnames(output) <- c("bidir_id","${prefix_cut}_counts")
+    colnames(output) <- c("bidir_id",countcol)
     write.table(output,
-        file=paste0("${prefix_cut}",".bidir.unstranded_counts.txt"),
+        file=paste0(prefix,".bidir.unstranded_counts.txt"),
         quote=FALSE,sep="\t",
         row.names=FALSE)
 
