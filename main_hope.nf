@@ -22,7 +22,6 @@
  * =============
  * Rutendo F. Sigauke : rutendo.sigauke@cuanschutz.edu
  * Lynn Sanford : lynn.sanford@colorado.edu
- * Hope Townsend : hope.townsend@colorado.edu
  */
 
 def helpMessage() {
@@ -35,9 +34,9 @@ def helpMessage() {
     nextflow run main.nf -profile slurm --crams '/project/*.sorted.cram' --workdir '/project/tempfiles' --outdir '/project/'
     Required arguments:
          -profile                      Configuration profile to use. <genome_user>
-         --crams                       Directory pattern for cram files: /project/*.sorted.cram (Required if --bams or --bedgraphs not specified).
-         --bams                        Directory pattern for bam files: /project/*.sorted.bam (Required if --crams or --bedgraphs not specified).
-         --bedgraphs                   Directory pattern for bedgraph files: /project/*.bedGraph (Required if --crams or --bams not specified).
+         --crams                       Directory pattern for cram files: /project/*.sorted.cram (Required if --bams or --tfitbedgraphs not specified).
+         --bams                        Directory pattern for bam files: /project/*.sorted.bam (Required if --crams or --tfitbedgraphs not specified).
+         --tfitbedgraphs               Directory pattern for tfit bedgraphs (comb +/-): /project/*.bedGraph (Required if --crams or --bams not specified)
          --workdir                     Nextflow working directory where all intermediate files are saved.
 
     Input File options:
@@ -97,7 +96,7 @@ summary['Pipeline Version'] = params.version
 summary['Run Name']         = workflow.runName
 if(params.crams) summary['Crams']            = params.crams
 if(params.bams) summary['Bams']              = params.bams
-if(params.bedgraphs) summary['Bedgraphs']              = params.bedgraphs
+if(params.tfitbedgraphs) summary['Tfitbedgraphs']              = params.tfitbedgraphs
 summary['Genome Ref']       = params.genome
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Five prime read']  = params.r1_five_prime ? 'Read 1' : 'Read 2 or single end'
@@ -207,7 +206,7 @@ if (params.crams) {
      samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
      """
   }
-} else if (params.crams) {
+} else if (params.bams) {
 
   sorted_bam_file = Channel
                   .fromPath(params.bams)
@@ -225,11 +224,12 @@ if (params.crams) {
                   .fromPath(params.bams)
                   .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 
-} else if (params.bedgraphs) {
+} else if (params.tfitbedgraphs) {
+  // only if tfit bedgraphs 
 
 }
-// only do tfit conversion of bams if not given bedgraphs
-if (!params.bedgraphs) {
+// only do tfit conversion of bams if not given tfit bedgraphs AND no Fstitch
+if (!params.tfitbedgraphs) {
   process bam_conversion_tfit {
    cpus 16
    queue 'short'
@@ -273,16 +273,16 @@ if (!params.bedgraphs) {
 
 }
 
-if (!params.bedgraphs) {
+if (!params.tfitbedgraphs) {
   println "[Log 1]: Bam files are ready\n"
 }
 
 
 
 // PART 2: Generate bedgraphs if not already made
-if (!params.bedgraphs) {
+if (!params.tfitbedgraphs) {
   process bedgraphs {
-}
+
 
     println "[Log 2]: Generating BEDGRAPHS for TFit and FStitch"
     println "[Log 2]: Genome information ..... $params.genome "
@@ -403,13 +403,16 @@ if (!params.bedgraphs) {
     """
     }
  }
-
+} else {
+  // Otherwise, need to have the tfit bedgraphs be included
+  prelimtfit_bg = params.tfitbedgraphs
+}
 
 println "[Log 2]: Bedgraph files are ready\n"
 
 
 // PART 3: Running FStitch
-
+if (params.fstitch) {
 process FStitch {
     println "[Log 3]: Running FStitch"
     println "[Log 3]: FStitch training file .. $params.fstitch_train"
@@ -480,8 +483,10 @@ process FStitch {
         -s
     """
 }
-
 println "[Log 3]: Done Running FStitch\n"
+}
+
+
 
 
 // PART 4: Running Tfit
@@ -765,7 +770,7 @@ println "[Log 4b]: Done Running Tfit model\n"
 
 
 // PART 5: Preparing bigwig files for dREG
-
+if (params.dreg) {
 process dreg_prep {
     println "[Log 5]: Generating bigwig files for dREG"
 
@@ -926,7 +931,7 @@ process dreg_prep {
     }
 }
 
-println "[Log 5]: Bigwig files are ready \n"
+println "[Log 5]: Bigwig files are ready for dreg \n"
 
 
 // PART 6: Running dREG
@@ -962,6 +967,7 @@ process dreg_run {
 	     ${params.dreg_train} \
 	     4 1 
         """
+}
 }
 
 if (params.dreg_results) {
@@ -1195,7 +1201,7 @@ println "[Log 7]: Finished with bidir stats"
 }
 
 // PART 8: Counting over genes
-
+if (params.gene_count) {
 process gene_count {
    println "[Log 8]: Running FeatureCounts"
 
@@ -1440,8 +1446,9 @@ process gene_count_filter {
 }
 
 println "[Log 8]: Done Running FeatureCounts\n"
+}
 
-
+if (params.bedtools_count) {
 process bedtools_count {
    println "[Log 8]: Running Bedtools coverage"
 
@@ -1507,12 +1514,12 @@ process bedtools_count {
     """
     }
 }
-
+}
 println "[Log 8]: Done Running Bedtools counts\n"
 
 
 // PART 9: Counting over bidirectionals
-
+if (params.bidir_count) {
 process bidirectional_count {
     println "[Log 9]: Running FeatureCounts over bidirs"
 
@@ -1675,7 +1682,7 @@ process bidirectional_count {
 }
 
 println "[Log 9]: Done Running FeatureCounts\n"
-
+}
 /*
  * Completion report
  */
