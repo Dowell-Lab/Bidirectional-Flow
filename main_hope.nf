@@ -22,6 +22,7 @@
  * =============
  * Rutendo F. Sigauke : rutendo.sigauke@cuanschutz.edu
  * Lynn Sanford : lynn.sanford@colorado.edu
+ * Hope Townsend : hope.townsend@colorado.edu
  */
 
 def helpMessage() {
@@ -34,8 +35,9 @@ def helpMessage() {
     nextflow run main.nf -profile slurm --crams '/project/*.sorted.cram' --workdir '/project/tempfiles' --outdir '/project/'
     Required arguments:
          -profile                      Configuration profile to use. <genome_user>
-         --crams                       Directory pattern for cram files: /project/*.sorted.cram (Required if --bams not specified).
-         --bams                        Directory pattern for bam files: /project/*.sorted.bam (Required if --crams not specified).
+         --crams                       Directory pattern for cram files: /project/*.sorted.cram (Required if --bams or --bedgraphs not specified).
+         --bams                        Directory pattern for bam files: /project/*.sorted.bam (Required if --crams or --bedgraphs not specified).
+         --bedgraphs                   Directory pattern for bedgraph files: /project/*.bedGraph (Required if --crams or --bams not specified).
          --workdir                     Nextflow working directory where all intermediate files are saved.
 
     Input File options:
@@ -95,6 +97,7 @@ summary['Pipeline Version'] = params.version
 summary['Run Name']         = workflow.runName
 if(params.crams) summary['Crams']            = params.crams
 if(params.bams) summary['Bams']              = params.bams
+if(params.bedgraphs) summary['Bedgraphs']              = params.bedgraphs
 summary['Genome Ref']       = params.genome
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Five prime read']  = params.r1_five_prime ? 'Read 1' : 'Read 2 or single end'
@@ -167,7 +170,7 @@ software_versions.collectFile(name: "software_versions_bidir_${output_date}_${wo
 println "[Log 0]: Software versions complete"
 
 
-// PART 1: Converting cram files to bam files
+// PART 1: Converting cram files to bam files (OR just immediately getting bedgraphs)
 
 if (params.crams) {
   println "[Log 1]: Converting CRAM files to BAM files"
@@ -204,7 +207,7 @@ if (params.crams) {
      samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
      """
   }
-} else {
+} else if (params.crams) {
 
   sorted_bam_file = Channel
                   .fromPath(params.bams)
@@ -222,9 +225,12 @@ if (params.crams) {
                   .fromPath(params.bams)
                   .map { file -> tuple((file.simpleName + '.sorted'), file, (file + '.bai'))}
 
-}
+} else if (params.bedgraphs) {
 
-process bam_conversion_tfit {
+}
+// only do tfit conversion of bams if not given bedgraphs
+if (!params.bedgraphs) {
+  process bam_conversion_tfit {
    cpus 16
    queue 'short'
    memory '5 GB'
@@ -265,12 +271,19 @@ process bam_conversion_tfit {
 
 }
 
-println "[Log 1]: Bam files are ready\n"
+}
+
+if (!params.bedgraphs) {
+  println "[Log 1]: Bam files are ready\n"
+}
 
 
-// PART 2: Generate bedgraphs
 
-process bedgraphs {
+// PART 2: Generate bedgraphs if not already made
+if (!params.bedgraphs) {
+  process bedgraphs {
+}
+
     println "[Log 2]: Generating BEDGRAPHS for TFit and FStitch"
     println "[Log 2]: Genome information ..... $params.genome "
     println "[Log 2]: Chromosome Sizes ....... $params.chrom_sizes"
@@ -392,7 +405,7 @@ process bedgraphs {
  }
 
 
-println "[Log 2]: Bedgraph files have been generated\n"
+println "[Log 2]: Bedgraph files are ready\n"
 
 
 // PART 3: Running FStitch
