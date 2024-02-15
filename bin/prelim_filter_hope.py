@@ -837,8 +837,8 @@ parser.add_argument(
 )
 parser.add_argument(
     "-m",
-    "--mu_bed",
-    dest="mu_bed",
+    "--mu_file",
+    dest="mu_file",
     type=str,
     help="Bed file of single base resolution of mus to include in prelims",
     metavar="FILE",
@@ -916,6 +916,7 @@ main(
     args.bedgraph,
     args.outdir,
     args.samp,
+    args.mu_file,
     args.gtf,
     args.chrom,
     args.btype,
