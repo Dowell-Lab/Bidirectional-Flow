@@ -73,7 +73,7 @@ def helpMessage() {
 params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
 params.tfit_prelim_run = "$baseDir/bin/tfit_prelim.sh"
 params.tfit_model_run = "$baseDir/bin/tfit_model.sh"
-params.prelim_filter = "$baseDir/bin/prelim_filter.py"
+params.prelim_filter = "$baseDir/bin/prelim_filter_hope.py"
 software_versions = Channel.create()
 strand_specific = 0
 neg_strand = 0
@@ -716,6 +716,7 @@ if (params.tfit_split_model) {
                 -s ${prefix} \
                 -o . \
                 -g ${params.filtered_refseq} \
+                -m ${params.mu_bed} \
                 -c ${params.chrom_sizes}
 
         """
