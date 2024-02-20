@@ -1,19 +1,22 @@
 import os
 import sys
 import math
-
+from string import Template
 import argparse
 
 
-def bedtools_cov(prelim, bedgraph, sample_name, outdir):
+def bedtools_cov(prelim, bedgraph_pos, bedgraph_neg, sample_name, outdir):
     """Wrapper for running bedtools coverage
     Parameters
     ----------
     prelim : str (path)
         path to prelim bedgraph
 
-    bedgraph : str (path)
-        path to bedgraph file corresponding to the input prelim
+    bedgraph_pos : str (path)
+        path to positive bedgraph file corresponding to the input prelim
+        
+    bedgraph_neg : str (path)
+        path to negative bedgraph file corresponding to the input prelim
 
     outbed : str (path)
         path to output bed file
@@ -28,8 +31,14 @@ def bedtools_cov(prelim, bedgraph, sample_name, outdir):
     base_name = sample_name
 
     os.system(
-        "bedtools coverage -a {} -b {} > {}/{}_prelim_bedtools_coverage.bed".format(
-            prelim, bedgraph, outdir, base_name
+        "bedtools coverage -a {} -b {} > {}/{}_prelim_bedtools_coverage_+.bed".format(
+            prelim, bedgraph_pos, outdir, base_name
+        )
+    )
+    
+    os.system(
+        "bedtools coverage -a {} -b {} > {}/{}_prelim_bedtools_coverage_-.bed".format(
+            prelim, bedgraph_neg, outdir, base_name
         )
     )
 
@@ -94,36 +103,36 @@ def read_bedfile(bed, bed_type="tfit_prelim"):
     return bed_regions
 
 
-def bedtools_cov_filter(bedtools_cov_bed, filter_at=9):
-    """Filter BED file from 'bedtools coverage run' based on the 4th from last column
+# def bedtools_cov_filter(bedtools_cov_bed, filter_at=9):
+#     """Filter BED file from 'bedtools coverage run' based on the 4th from last column
 
-    Parameter
-    ---------
-    bedtools_cov_bed : list of lists
-        bed regions from bedtools coverage in list format
+#     Parameter
+#     ---------
+#     bedtools_cov_bed : list of lists
+#         bed regions from bedtools coverage in list format
 
-    filter_at : int (default = 9)
-        minimum coverage to use as cut-off
+#     filter_at : int (default = 9)
+#         minimum coverage to use as cut-off
 
-    Returns
-    -------
-    regions_filtered : list of lists
-        filtered bed regions with coverage greater than 'filter_at'
+#     Returns
+#     -------
+#     regions_filtered : list of lists
+#         filtered bed regions with coverage greater than 'filter_at'
 
-    """
-    regions_filtered = []
+#     """
+#     regions_filtered = []
 
-    # get coverage from the bedtools coverage output file
-    for region in bedtools_cov_bed:
+#     # get coverage from the bedtools coverage output file
+#     for region in bedtools_cov_bed:
 
-        # coverage is in the 4th to last column
-        cov = int(region[-4])
-        if cov > filter_at:
-            regions_filtered.append([region[0], region[1], region[2], region[3]])
-        else:
-            pass
+#         # coverage is in the 4th to last column
+#         cov = int(region[-4])
+#         if cov > filter_at:
+#             regions_filtered.append([region[0], region[1], region[2], region[3]])
+#         else:
+#             pass
 
-    return regions_filtered
+#     return regions_filtered
 
 
 def break_large_regions(chrom, width, start, stop, region_id, break_by=10000):
@@ -405,7 +414,7 @@ def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, s
 
     return tss_bed, tss_slop_bed
 
-def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=2000, add_slop=True, slop=750):
+def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=600, add_slop=False, slop=750):
     """load in gene gtf file and extract TSS ends into regions
 
     Parameters
@@ -419,7 +428,7 @@ def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=2000, add_slop=True, slop=750)
     outdir : str (path)
         output directory for TSS bedfiles
 
-    mu_width : int (2000 default)
+    mu_width : int (1000 default)
         width of region around mu coordinate
 
     add_slop : boolean (True default)
@@ -446,9 +455,9 @@ def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=2000, add_slop=True, slop=750)
     # Run bedtools slop to get base TSS regions
     os.system(
         "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2n | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
-            mu_file,
+            mu_bed,
             chrom_sizes,
-            math.ceil(tss_width/2),
+            math.ceil(mu_width/2),
             mu_width_bed
         )
     )
@@ -457,7 +466,7 @@ def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=2000, add_slop=True, slop=750)
     if add_slop == True:
         os.system(
             "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2n | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
-                mu_file,
+                mu_bed,
                 chrom_sizes,
                 (math.ceil(mu_width/2) + int(slop)),
                 mu_slop_bed
@@ -590,7 +599,7 @@ def designate_mu(prelim, mu_width_bed, sample_name, outdir, mu_slop_bed, add_slo
 
     os.system(
         "bedtools subtract -a {} -b {} > {}".format(
-            prelim, mu_width, prelim_subtract
+            prelim, mu_width_bed, prelim_subtract
         )
     )
 
@@ -704,33 +713,37 @@ def main(
     parse_tss=True,
     add_mu=True,
     tss_width=2000,
+    mu_width=2000,
     add_slop=True,
     tss_slop=750
 ):
     """Process input prelim files"""
-
+    print("MU_BED", mu_bed)
     # 1 : set a base name for the output files
     if sample_name:
         base_name = sample_name
     else:
         base = os.path.basename(prelim_bed)
         base_name = base[: base.index(".")]
+        
+    # 2A : Add mu regions and point to new prelim bed file
+    if add_mu == True:
+        print("adding mu")
+        mu_width_bed, mu_slop_bed = slop_mu(
+            mu_bed, chrom_sizes, output_directory, mu_width, False, tss_slop)
+        prelim_filepath = designate_mu(
+            prelim_bed, mu_width_bed, base_name, output_directory, mu_slop_bed, False)
+        prelim_bed = prelim_filepath
 
-    # 2A : parse TSS regions and point to new prelim bed file
+    # 2B : parse TSS regions and point to new prelim bed file
     if parse_tss == True:
+        print("parsing TSS with prelim file", prelim_bed)
         tss_bed, tss_slop_bed = parse_gtf_tss(
             tss_gtf, chrom_sizes, output_directory, tss_width, add_slop, tss_slop)
         prelim_filepath = designate_tss(
             prelim_bed, tss_bed, base_name, output_directory, tss_slop_bed, add_slop)
         prelim_bed = prelim_filepath
         
-    # 2B : Add mu regions and point to new prelim bed file
-    if add_mu == True:
-        mu_width_bed, mu_slop_bed = slop_mu(
-            mu_bed, chrom_sizes, output_directory, tss_width, add_slop, tss_slop)
-        prelim_filepath = designate_mu(
-            prelim_bed, mu_width_bed, base_name, output_directory, mu_slop_bed, add_slop)
-        prelim_bed = prelim_filepath
 
     # 3 : load the prelim bed file
     prelim_bed_list = read_bedfile(prelim_bed, bed_type="tfit_prelim")
@@ -749,31 +762,61 @@ def main(
         4,
     )
     
-    # 6 : get coverage over prelim regions
-    bedtools_cov(
-        "{}/{}_prelim_diced_intermediate.bed".format(output_directory, base_name),
-        prelim_bedgraph,
-        base_name,
-        output_directory,
+    # 6. Get the positive and negative bedgraphs
+    os.system(
+        "grep '-' {} | sed -r 's/-//' > {}/{}_neg.bedGraph".format(prelim_bedgraph, output_directory, base_name
+        )
     )
+    os.system(
+        "grep -v '-' {} > {}/{}_pos.bedGraph".format(prelim_bedgraph, output_directory, base_name
+        )
+    )
+    
+    # 7. Get the coverage for both strands
+    os.system(
+        "bedtools coverage -a {}/{}_prelim_diced_intermediate.bed -b {}/{}_neg.bedGraph > {}/{}_cov_neg.bed".format(output_directory, base_name, output_directory, base_name, output_directory, base_name)
+    )
+    os.system(
+        "bedtools coverage -a {}/{}_prelim_diced_intermediate.bed -b {}/{}_pos.bedGraph > {}/{}_cov_pos.bed".format(output_directory, base_name, output_directory, base_name, output_directory, base_name)
+    )
+    
+    # 8 : Filter regions with low coverage on BOTH strands
+    os.system(Template("awk -v FS='\t' -v OFS='\t' '{ if ($e > 5) print $a,$b,$c,$d }' $f/${g}_cov_neg.bed > $f/${g}_cov_filt_neg.bed").safe_substitute(a="$1", b="$2", c="$3", d="$4", e="$5", f=output_directory, g=base_name))
+    os.system(Template("awk -v FS='\t' -v OFS='\t' '{ if ($e > 5) print $a,$b,$c,$d }' $f/${g}_cov_pos.bed > $f/${g}_cov_filt_pos.bed").safe_substitute(a="$1", b="$2", c="$3", d="$4", e="$5", f=output_directory, g=base_name)
+             )
+# #     os.system("awk -v FS='\t' -v OFS='\t' '{ if ($5 > 9) print $1,$2,$3,$4 }' {}/{}_cov_pos.bed > {}/{}_cov_filt_pos.bed".format(output_directory, base_name, output_directory, base_name)
+# #              )
+     
+    # 9 : Only keep regions with signfiicant coverage on BOTH strands
+    os.system("bedtools intersect -a {}/{}_cov_filt_neg.bed -b {}/{}_cov_filt_pos.bed -u -f 0.97 -r > {}/{}_prelim_coverage_filtered_diced.bed".format(output_directory, base_name, output_directory, base_name, output_directory, base_name)
+             )
+              
+        
+#          # 6 : get coverage over prelim regions
+#     bedtools_cov(
+#         "{}/{}_prelim_diced_intermediate.bed".format(output_directory, base_name),
+#         bedgraph,
+#         base_name,
+#         output_directory,
+#     )
 
-    # 7 : load diced region
-    prelim_coverage_list = read_bedfile(
-        "{}/{}_prelim_bedtools_coverage.bed".format(output_directory, base_name),
-        bed_type="bedtools_coverage",
-    )
+     # 7 : load diced region
+#     prelim_coverage_list = read_bedfile(
+#         "{}/{}_prelim_bedtools_coverage.bed".format(output_directory, base_name),
+#         bed_type="bedtools_coverage",
+#     )
 
     # 8 : filter regions with low coverage
-    prelim_filtered_list = bedtools_cov_filter(
-        prelim_coverage_list, filter_at=filter_at
-    )
+#     prelim_filtered_list = bedtools_cov_filter(
+#         prelim_coverage_list, filter_at=filter_at
+#     )
 
     # 9 : write the new filtered file in bed format
-    write_bedfile(
-        "{}/{}_prelim_coverage_filtered_diced.bed".format(output_directory, base_name),
-        prelim_filtered_list,
-        4,
-    )
+#     write_bedfile(
+#         "{}/{}_prelim_coverage_filtered_diced.bed".format(output_directory, base_name),
+#         prelim_filtered_list,
+#         4,
+#     )
 
 
 parser = argparse.ArgumentParser(description="Filter prelim BED files from Tfit")
@@ -861,6 +904,15 @@ parser.add_argument(
     metavar="INT",
 )
 parser.add_argument(
+    "-mw",
+    "--mu_width",
+    dest="muwidth",
+    type=int,
+    default=2000,
+    help="Width of region around TSS",
+    metavar="INT",
+)
+parser.add_argument(
     "-l",
     "--slop_val",
     dest="slopval",
@@ -893,6 +945,20 @@ parser.add_argument(
     action="store_false",
     help="No parsing prelim file along with TSS file",
 )
+
+parser.add_argument(
+    "--mu",
+    dest="mu",
+    action="store_true",
+    help="Parse prelim file along with mu file",
+)
+
+parser.add_argument(
+    "--no-mu",
+    dest="mu",
+    action="store_false",
+    help="No parsing prelim file along with mu file",
+)
 parser.add_argument(
     "--tss-slop",
     dest="slop",
@@ -906,7 +972,7 @@ parser.add_argument(
     help="No slop around TSS regions",
 )
 
-parser.set_defaults(stagger=True, tss=True, slop=True)
+parser.set_defaults(stagger=True, tss=True, slop=True, mu=True)
 
 args = parser.parse_args()
 
@@ -924,7 +990,9 @@ main(
     args.brk,
     args.stagger,
     args.tss,
+    args.mu,
     args.tsswidth,
+    args.muwidth,
     args.slop,
     args.slopval
 )

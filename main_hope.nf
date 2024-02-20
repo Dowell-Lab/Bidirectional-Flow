@@ -41,7 +41,8 @@ def helpMessage() {
 
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
-        --forwardStranded	       If input file is paired, specifies if read 1 has the 5 prime end (default R2 is five prime, must be manually determined)
+        --forwardStranded	             If input file is paired, specifies if read 1 has the 5 prime end (default R2 is five prime, must be manually determined)
+        --tfit_3prime                  If you want to have just the 3 prime end saved for Tfit analysis (should be flipped)
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
@@ -99,6 +100,7 @@ if(params.bams) summary['Bams']              = params.bams
 if(params.tfitbedgraphs) summary['Tfitbedgraphs']              = params.tfitbedgraphs
 summary['Genome Ref']       = params.genome
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
+summary['Tfit use 3 prime']       = params.tfit_3prime ? 'YES' : 'NO'
 summary['Five prime read']  = params.r1_five_prime ? 'Read 1' : 'Read 2 or single end'
 summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch ? 'YES' : 'NO'
@@ -278,7 +280,12 @@ if (!params.tfitbedgraphs) {
 }
 
 
-
+// add the variable outt
+if (params.tfit_3prime) {
+  outt="_3.bedGraph"
+} else {
+  outt=".bedGraph"
+}
 // PART 2: Generate bedgraphs if not already made
 if (!params.tfitbedgraphs) {
   process bedgraphs {
@@ -287,6 +294,7 @@ if (!params.tfitbedgraphs) {
     println "[Log 2]: Generating BEDGRAPHS for TFit and FStitch"
     println "[Log 2]: Genome information ..... $params.genome "
     println "[Log 2]: Chromosome Sizes ....... $params.chrom_sizes"
+    println "[Log 2]: Tfit out file ....... $outt"
 
     tag "$prefix"
     memory '40 GB'
@@ -296,6 +304,7 @@ if (!params.tfitbedgraphs) {
     publishDir "${params.outdir}" , mode: 'copy',
     saveAs: {filename ->
              if (params.savebg && (filename == "${prefix}.bedGraph"))    "bedgraphs/${prefix}.bedGraph"
+             else if (params.savebg && params.tfit_3prime && (filename == "${prefix}_3.bedGraph")) "bedgraphs/${prefix}_3.bedGraph"
              else null
             }
 
@@ -307,10 +316,57 @@ if (!params.tfitbedgraphs) {
 
     output:
     tuple val(prefix), file("${prefix}.bedGraph"), file("${prefix}.pos.bedGraph"), file("${prefix}.neg.bedGraph") into fstitch_bg
-    tuple val(prefix), file("${prefix}.bedGraph") into prelimtfit_bg, prelimtfit_process_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, post_tfit_bg_split, nqc_bg
+    tuple val(prefix), file("${prefix}${outt}") into prelimtfit_bg, prelimtfit_process_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, post_tfit_bg_split, nqc_bg
+    
 
     script:
-    if (params.singleEnd) {
+    if (params.singleEnd & params.tfit_3prime) {
+      // Get the positive & negative bedgraphs for Fstitch, but use the 3' combined bedgraph for Tfit
+    """
+    genomeCoverageBed \
+        -bg \
+        -strand + \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        > ${prefix}.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -strand - \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${prefix}.neg.bedGraph
+    cat ${prefix}.pos.bedGraph \
+        ${prefix}.neg.bedGraph \
+        > ${prefix}.unsorted.bedGraph
+    sortBed \
+        -i ${prefix}.unsorted.bedGraph \
+        > ${prefix}.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -strand + \
+        -3 \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        > ${prefix}_3.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -strand - \
+        -3 \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${prefix}_3.neg.bedGraph
+    cat ${prefix}_3.pos.bedGraph \
+        ${prefix}_3.neg.bedGraph \
+        > ${prefix}_3.unsorted.bedGraph
+    rm ${prefix}_3.pos.bedGraph
+    rm ${prefix}_3.neg.bedGraph
+    sortBed \
+        -i ${prefix}_3.unsorted.bedGraph \
+        > ${prefix}_3.bedGraph
+    """
+    } else if (params.singleEnd) {
     """
     genomeCoverageBed \
         -bg \
@@ -332,7 +388,7 @@ if (!params.tfitbedgraphs) {
     sortBed \
         -i ${prefix}.unsorted.bedGraph \
         > ${prefix}.bedGraph
-
+    outt=${prefix}.bedGraph
     """
     } else if (params.forwardStranded) {
     """
@@ -366,7 +422,6 @@ if (!params.tfitbedgraphs) {
     sortBed \
         -i ${prefix}.unsorted.bedGraph \
         > ${prefix}.bedGraph
-
     """
     } else {
     """
@@ -542,7 +597,7 @@ if (params.tfit_split_model) {
         .join(tfit_prelim_out)
 
     process tfit_prelim_process_split {
-        println "[Log 4b]: Processing prelim file for split model run"
+        println "[Log 4b]: Processing prelim file for split model run using mu file $params.mu_file"
 
         tag "$prefix"
         memory '20 GB'
@@ -568,6 +623,7 @@ if (params.tfit_split_model) {
                 -p ${prelim} \
                 -b ${bg} \
                 -s ${prefix} \
+                -m ${params.mu_file} \
                 -o . \
                 -g ${params.filtered_refseq} \
                 -c ${params.chrom_sizes}
