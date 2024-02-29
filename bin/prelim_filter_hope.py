@@ -414,7 +414,7 @@ def parse_gtf_tss(tss_gtf, chrom_sizes, outdir, tss_width=2000, add_slop=True, s
 
     return tss_bed, tss_slop_bed
 
-def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=600, add_slop=False, slop=750):
+def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=2000, add_slop=False, slop=750):
     """load in gene gtf file and extract TSS ends into regions
 
     Parameters
@@ -428,7 +428,7 @@ def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=600, add_slop=False, slop=750)
     outdir : str (path)
         output directory for TSS bedfiles
 
-    mu_width : int (1000 default)
+    mu_width : int (600 default)
         width of region around mu coordinate
 
     add_slop : boolean (True default)
@@ -452,7 +452,7 @@ def slop_mu(mu_bed, chrom_sizes, outdir, mu_width=600, add_slop=False, slop=750)
     else:
         mu_slop_bed = ""
 
-    # Run bedtools slop to get base TSS regions
+    # Run bedtools slop to get base mu regions
     os.system(
         "bedtools slop -i {} -g {} -b {} | sort -k1,1 -k2,2n | bedtools merge -c 4,5 -o collapse,distinct > {}".format(
             mu_bed,
@@ -561,8 +561,8 @@ def designate_tss(prelim, tss_bed, sample_name, outdir, tss_slop_bed, add_slop=T
 
 def designate_mu(prelim, mu_width_bed, sample_name, outdir, mu_slop_bed, add_slop=True):
 
-    """Wrapper for running bedtools to subtract TSS regions from 
-    prelim and merge prelim and TSS regions
+    """Wrapper for running bedtools to subtract mu regions from the original
+    prelim file and merge prelim and mu regions
 
     Parameters
     ----------
@@ -729,17 +729,20 @@ def main(
     # 2A : Add mu regions and point to new prelim bed file
     if add_mu == True:
         print("adding mu")
+        # add mu_width/2 to both sides of mu (default 1kb --> 2kb width)
         mu_width_bed, mu_slop_bed = slop_mu(
             mu_bed, chrom_sizes, output_directory, mu_width, False, tss_slop)
+        # replace orig Tfit prelim calls with the mu calls if they overlap
         prelim_filepath = designate_mu(
             prelim_bed, mu_width_bed, base_name, output_directory, mu_slop_bed, False)
         prelim_bed = prelim_filepath
 
-    # 2B : parse TSS regions and point to new prelim bed file
+    # 2B : parse TSS regions and point to new prelim bed file 
     if parse_tss == True:
         print("parsing TSS with prelim file", prelim_bed)
         tss_bed, tss_slop_bed = parse_gtf_tss(
             tss_gtf, chrom_sizes, output_directory, tss_width, add_slop, tss_slop)
+        # replace orig Tfit prelim OR mu calls with TSS if they overlap
         prelim_filepath = designate_tss(
             prelim_bed, tss_bed, base_name, output_directory, tss_slop_bed, add_slop)
         prelim_bed = prelim_filepath
@@ -750,27 +753,21 @@ def main(
 
     # 4: break regions
     prelim_diced_list = dice_prelim(
-        prelim_bed_list, staggered=staggered, break_by=break_by
-    )
-
-    # print(prelim_diced_list)
+        prelim_bed_list, staggered=staggered, break_by=break_by)
 
     # 5 : save the intermediate diced bed file
     write_bedfile(
         "{}/{}_prelim_diced_intermediate.bed".format(output_directory, base_name),
         prelim_diced_list,
-        4,
-    )
+        4)
     
     # 6. Get the positive and negative bedgraphs
     os.system(
         "grep '-' {} | sed -r 's/-//' > {}/{}_neg.bedGraph".format(prelim_bedgraph, output_directory, base_name
-        )
-    )
+        ))
     os.system(
         "grep -v '-' {} > {}/{}_pos.bedGraph".format(prelim_bedgraph, output_directory, base_name
-        )
-    )
+        ))
     
     # 7. Get the coverage for both strands
     os.system(
@@ -791,7 +788,7 @@ def main(
     os.system("bedtools intersect -a {}/{}_cov_filt_neg.bed -b {}/{}_cov_filt_pos.bed -u -f 0.97 -r > {}/{}_prelim_coverage_filtered_diced.bed".format(output_directory, base_name, output_directory, base_name, output_directory, base_name)
              )
               
-        
+#### Original ways of doing things        
 #          # 6 : get coverage over prelim regions
 #     bedtools_cov(
 #         "{}/{}_prelim_diced_intermediate.bed".format(output_directory, base_name),
