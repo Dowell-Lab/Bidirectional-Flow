@@ -4,8 +4,27 @@ Nextflow pipeline for detecting bidirectional transcripts and counting reads fro
 This pipeline is built on top of and is an expansion of the Nascent-Flow pipeline (https://github.com/Dowell-Lab/Nascent-Flow). Using dREG, FStitch and/or Tfit, this pipeline identifies regions of transcription fron nascent experiments.
 
 # Installation
-
- `$ git clone https://github.com/Dowell-Lab/Bidirectional-Flow.git`
+ ```
+ $ git clone https://github.com/Dowell-Lab/Bidirectional-Flow.git
+ $ git checkout Tfit_focus
+ ```
+ 
+ 
+# Edits from Main
+1. Running Tfit with 3' bedgraphs. 
+    * Why: Tfit is more likely to call bidirectionals with significant background noise when using 3' bedgraphs compared to the full read bedgraphs. 
+    * What: Tfit (and only Tfit) will be run with 3prime bedgraphs rather than full-read data. These bedgraphs will be saved if savebg parameter is used.
+    * Restrictions: Currently, the edits only allow 3' bedgraphs of single-read data. This means the library must be flipped (rcomp field in the metadata should be 1). 
+    * How: --tfit_3prime argument (in help description below)
+    * Scripts edited: main_hope.nf
+2. Consider 800k+ enhancers identified from DBNascent 2023 (https://doi.org/10.1101/2023.12.07.570626) in the preliminary regions for Tfit. AND consider coverage filters on BOTH strands.
+    * Why: Tfit can miss calls so including preliminary regions where we know an enhancer exists, regardless of it is being transcribed, can ensure these regions are considered as possible locations. Similar work was done with the TSS previously.
+    * What: Mu regions (defaults are 2kb windows (1kb from mu both directions)) are merged to the original Tfit prelim file, replacing overlaps. Overlapping mu regions are merged. TSS regions then are merged, replacing any prelim regions (including mu regions). Then BOTH strands of regions must have at least 5 reads to be included for downstream Tfit analysis. **Warning: Both strands are currently considered for coverage restrictions regardless of if mu regions are included or not.**
+        * *Note*: If not using the double strand coverage, many of these regions can remain due to overlapping genes or noise: in my example, I went from 120k to 43k total prelim regions which saved about 70 hours in downstream Tfit run time.
+    * Restrictions: You must provide a bed file of the mus you want to consider. I used hg38_master_qc_gc_len_posneg_gene_filt_divconv_uniqueid_MUforTFIT_08-14-23.bed which can be found in /scratch/Shares/dowell/BidirFlow/hoto7260. I currently have not created parameters outside the python script to parameterize this method further. Defaults are to use 2kb (1kb from mu both directions) windows with no buffers. 
+    * How: Add the mu file to your config file for it to be considered. 
+    * Scripts edited: prelim_filter_hope.py & main_hope.nf
+  
 
 # Requirements
 
@@ -140,6 +159,7 @@ In order to run Tfit, our best practices filter CRAM/BAM files for multimapped r
         --bidir_count                  Run featureCounts to obtain stranded and unstranded read counts over an SAF annotation, such as for Tfit- and/or dREG-derived bidirectionals
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit bidir and full model. If used, you must also specify the Tfit_path parameter.
+        --tfit_3prime                  Use just the 3 prime end bedgraphs for Tfit analysis (should be flipped) **JUST WITH main_hope.nf**
         --tfit_prelim                  Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
         --tfit_model                   Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
         --tfit_split_model             Run Tfit model with different k values for different size regions (<5kb and 5-10kb)
