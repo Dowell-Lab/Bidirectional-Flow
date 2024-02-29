@@ -225,3 +225,4 @@ By default, dREG outputs undergo a coverage filtering step identical to that per
 
 * Rutendo Sigauke (): Nextflow base code and pipeline implementation
 * Lynn Sanford ([@lynn-sanford](https://github.com/lynn-sanford)): Nextflow pipeline implementation and optimization
+* Hope Townsend (hope.townsend@colorado.edu) made changes explained in "Edits from Main" section
