@@ -201,9 +201,10 @@ The modules may also be run separately with `--tfit_prelim`, which runs the `bid
 ### Prelim Processing
 
 `--prelim_process` is true by default. This informs the pipeline to process prelim files prior to modeling by performing three steps:
+- Add 2kb regions around annotated mu sites provided in the config file
 - Add 2kb regions around annotated transcription start sites
 - Cut large prelim regions into equal-size regions less than 10kb.
-- Filter out regions that have less than 5 unique reads, as determined with `bedtools coverage`
+- Filter out regions that have less than 5 unique reads on BOTH strands, as determined with `bedtools coverage`
 
 Before final model output, all modeled output regions are also filtered for coverage using the same metric. This outputs an additional coverage filtered bedfile.
 
