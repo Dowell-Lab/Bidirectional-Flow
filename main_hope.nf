@@ -22,6 +22,7 @@
  * =============
  * Rutendo F. Sigauke : rutendo.sigauke@cuanschutz.edu
  * Lynn Sanford : lynn.sanford@colorado.edu
+ * Hope Townsend : hope.townsend@colorado.edu
  */
 
 def helpMessage() {
