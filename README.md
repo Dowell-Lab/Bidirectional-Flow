@@ -25,6 +25,16 @@ This pipeline is built on top of and is an expansion of the Nascent-Flow pipelin
     * How: Add the mu file to your config file for it to be considered. 
     * Scripts edited: prelim_filter_hope.py & main_hope.nf
   
+# How to tell what end of the read(s) to use:
+- For library preps that produce cDNA, the original fragment (where 3' end most likely has the signla nucleotide) is polymerized. This means the cDNA 5' end is the original 3' end. 
+Single end
+* Normal GRO-seq/PRO-seq (3' end has signal nucleotide)
+  * cDNA: Flipped vs not flipped:
+      * A flipped library addresses the cDNA "swapping" of ends, so that the 3' end of the sequencing read actually matches 3' end of the original fragment. You can tell if something is flipped in dbNascent by looking at metadata/sample_metadata.txt under rcomp (boolean for if reverse complement or not) where 1 indicates flipped.
+      * If not flipped, the read came from the 5' end so although the 3' end of the read is still closest to the true biotinulated nucleotide, it doesn't actually match it as it is in the middle of the fragment.
+Paired end
+* Currently ignoring its existence lol
+  
 
 # Requirements
 
