@@ -180,6 +180,7 @@ if (params.crams) {
   println "[Log 1]: Cram file directory ........ $params.crams"
   println "[Log 1]: Working directory ... $params.workdir"
   println "[Log 1]: Output directory ... $params.outdir"
+  println "[Log 1]: Cramfiles ..."
   cramfiles = Channel
                   .fromPath(params.crams)
                   .map { file -> tuple((file.simpleName + '.sorted'), file)}
@@ -190,7 +191,6 @@ if (params.crams) {
      memory '5 GB'
      time '1h30m'
      tag "$prefix"
-
      publishDir "${params.outdir}" , mode: 'copy',
      saveAs: {filename ->
               if (params.savebam && (filename == "${prefix}.sorted.bam"))    "bams/${prefix}.sorted.bam"
@@ -229,6 +229,7 @@ if (params.crams) {
 
 } else if (params.tfitbedgraphs) {
   // only if tfit bedgraphs 
+  
 
 }
 // only do tfit conversion of bams if not given tfit bedgraphs AND no Fstitch
@@ -460,8 +461,35 @@ if (!params.tfitbedgraphs) {
     }
  }
 } else {
+
+    
   // Otherwise, need to have the tfit bedgraphs be included
-  prelimtfit_bg = params.tfitbedgraphs
+  bgfiles = Channel
+                  .fromPath(params.tfitbedgraphs)
+                  .map { file -> tuple((file.simpleName + '.sorted'), file)}
+  println "USING BEDGRAPHS $bgfiles"
+  
+  
+  process use_bedgraphs {
+
+    input:
+    tuple val(prefix),file(bg) from bgfiles
+
+    output:
+    tuple val(prefix), file(bg) into prelimtfit_bg, prelimtfit_process_bg, modeltfit_bg, modeltfit_bg_split_max5kb, modeltfit_bg_split_max10kb, post_tfit_bg_split, nqc_bg
+
+    when:
+    params.tfitbedgraphs
+
+    script:
+    """
+    # Assume bedgraphs are directly provided and no processing is needed
+    echo "bg" ${bg} 
+    echo "prefix" ${prefix}
+    """
+}
+  
+  
 }
 
 println "[Log 2]: Bedgraph files are ready\n"
@@ -646,7 +674,7 @@ if (params.tfit_split_model) {
         tag "$prefix"
         memory '70 GB'
         time '72h'
-        queue 'long'
+        queue 'highmem'
         clusterOptions = '-N 1 -n 32'
 
         publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
@@ -681,7 +709,7 @@ if (params.tfit_split_model) {
         tag "$prefix"
         memory '70 GB'
         time '96h'
-        queue 'long'
+        queue 'highmem'
         clusterOptions = '-N 1 -n 32'
 
         publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*_bidir_predictions.bed"
@@ -793,7 +821,7 @@ if (params.tfit || params.tfit_model) {
         tag "$prefix"
         memory '70 GB'
         time '72h'
-        queue 'long'
+        queue 'highmem'
         clusterOptions = '-N 1 -n 32'
 
         publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*{_bidir_predictions.bed,_bidir_cov_filtered.bed}"
@@ -1793,4 +1821,3 @@ workflow.onComplete {
     log.info "[Bidirectional-Flow] Pipeline Complete"
 
 }
-
