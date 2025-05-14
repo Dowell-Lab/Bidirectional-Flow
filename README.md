@@ -11,11 +11,10 @@ This pipeline is built on top of and is an expansion of the Nascent-Flow pipelin
  
  
 # Edits from Main
-1. Running Tfit with 3' bedgraphs. 
-    * Why: Tfit is more likely to call bidirectionals with significant background noise when using 3' bedgraphs compared to the full read bedgraphs. 
-    * What: Tfit (and only Tfit) will be run with 3prime bedgraphs rather than full-read data. These bedgraphs will be saved if savebg parameter is used.
-    * Restrictions: Currently, the edits only allow 3' bedgraphs of single-read data. This means the library must be flipped (rcomp field in the metadata should be 1). 
-    * How: --tfit_3prime argument (in help description below)
+1. Running Tfit with 3' or 5' bedgraphs. 
+    * Why: Tfit is more likely to call bidirectionals with significant background noise when using single-point bedgraphs compared to the full read bedgraphs. When considering PRO-seq, the 3' of the bedgraph usually best corresponds to the actual position of RNA Pol II (5' end for GRO-seq). The 3' vs 5' being best can depend also on your library prep.
+    * What: Tfit (and only Tfit) will be run with 3 or 5 prime bedgraphs rather than full-read data. These bedgraphs will be saved if savebg parameter is used.
+    * How: --tfit_3prime or --tfit_5prime argument (in help description below)
     * Scripts edited: main_hope.nf
 2. Consider 800k+ enhancers identified from DBNascent 2023 (https://doi.org/10.1101/2023.12.07.570626) in the preliminary regions for Tfit. AND consider coverage filters on BOTH strands.
     * Why: Tfit can miss calls so including preliminary regions where we know an enhancer exists, regardless of it is being transcribed, can ensure these regions are considered as possible locations. Similar work was done with the TSS previously.
@@ -25,7 +24,7 @@ This pipeline is built on top of and is an expansion of the Nascent-Flow pipelin
     * How: Add the mu file to your config file for it to be considered. 
     * Scripts edited: prelim_filter_hope.py & main_hope.nf
   
-# How to tell what end of the read(s) to use:
+<!-- # How to tell what end of the read(s) to use:
 - For library preps that produce cDNA, the original fragment (where 3' end most likely has the signla nucleotide) is polymerized. This means the cDNA 5' end is the original 3' end. 
 Single end
 * Normal GRO-seq/PRO-seq (3' end has signal nucleotide)
@@ -33,7 +32,7 @@ Single end
       * A flipped library addresses the cDNA "swapping" of ends, so that the 3' end of the sequencing read actually matches 3' end of the original fragment. You can tell if something is flipped in dbNascent by looking at metadata/sample_metadata.txt under rcomp (boolean for if reverse complement or not) where 1 indicates flipped.
       * If not flipped, the read came from the 5' end so although the 3' end of the read is still closest to the true biotinulated nucleotide, it doesn't actually match it as it is in the middle of the fragment.
 Paired end
-* Currently ignoring its existence lol
+* Currently ignoring its existence lol -->
   
 
 # Requirements

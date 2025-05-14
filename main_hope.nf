@@ -43,7 +43,8 @@ def helpMessage() {
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
         --forwardStranded	             If input file is paired, specifies if read 1 has the 5 prime end (default R2 is five prime, must be manually determined)
-        --tfit_3prime                  If you want to have just the 3 prime end saved for Tfit analysis (should be flipped)
+        --tfit_3prime                  If you want to have just the 3 prime end saved for Tfit analysis
+        --tfit_5prime                  If you want to have just the 5 prime end saved for Tfit analysis
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
@@ -102,6 +103,7 @@ if(params.tfitbedgraphs) summary['Tfitbedgraphs']              = params.tfitbedg
 summary['Genome Ref']       = params.genome
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Tfit use 3 prime']       = params.tfit_3prime ? 'YES' : 'NO'
+summary['Tfit use 5 prime']       = params.tfit_5prime ? 'YES' : 'NO'
 summary['Five prime read']  = params.r1_five_prime ? 'Read 1' : 'Read 2 or single end'
 summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch ? 'YES' : 'NO'
@@ -288,6 +290,13 @@ if (params.tfit_3prime) {
 } else {
   outt=".bedGraph"
 }
+
+if (params.tfit_5prime) {
+  outt="_5.bedGraph"
+} else {
+  outt=".bedGraph"
+}
+
 // PART 2: Generate bedgraphs if not already made
 if (!params.tfitbedgraphs) {
   process bedgraphs {
@@ -307,6 +316,7 @@ if (!params.tfitbedgraphs) {
     saveAs: {filename ->
              if (params.savebg && (filename == "${prefix}.bedGraph"))    "bedgraphs/${prefix}.bedGraph"
              else if (params.savebg && params.tfit_3prime && (filename == "${prefix}_3.bedGraph")) "bedgraphs/${prefix}_3.bedGraph"
+             else if (params.savebg && params.tfit_5prime && (filename == "${prefix}_5.bedGraph")) "bedgraphs/${prefix}_5.bedGraph"
              else null
             }
 
@@ -368,7 +378,55 @@ if (!params.tfitbedgraphs) {
         -i ${prefix}_3.unsorted.bedGraph \
         > ${prefix}_3.bedGraph
     """
-    } else if (params.singleEnd) {
+    } else if (params.singleEnd & params.tfit_5prime) {
+      // Get the positive & negative bedgraphs for Fstitch, but use the 5' combined bedgraph for Tfit
+    """
+    genomeCoverageBed \
+        -bg \
+        -strand + \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        > ${prefix}.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -strand - \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${prefix}.neg.bedGraph
+    cat ${prefix}.pos.bedGraph \
+        ${prefix}.neg.bedGraph \
+        > ${prefix}.unsorted.bedGraph
+    sortBed \
+        -i ${prefix}.unsorted.bedGraph \
+        > ${prefix}.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -strand + \
+        -5 \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        > ${prefix}_5.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -strand - \
+        -5 \
+        -g ${params.chrom_sizes} \
+        -ibam ${bam_file} \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${prefix}_5.neg.bedGraph
+    cat ${prefix}_5.pos.bedGraph \
+        ${prefix}_5.neg.bedGraph \
+        > ${prefix}_5.unsorted.bedGraph
+    rm ${prefix}_5.pos.bedGraph
+    rm ${prefix}_5.neg.bedGraph
+    sortBed \
+        -i ${prefix}_5.unsorted.bedGraph \
+        > ${prefix}_5.bedGraph
+    """
+    }
+
+    else if (params.singleEnd) {
     """
     genomeCoverageBed \
         -bg \
