@@ -96,7 +96,7 @@ Edit the configuration file to reflect the correct cluster paths (for genome spe
 
 User account-installed libraries such as boost and R packages must be added to the path before running Bidirectional-Flow, using commands such as the following:
   ```
-  export R_LIBS_USER=/Users/username/.R/3.6.0/
+  export R_LIBS_USER=/Users/username/.R/4.4.0/
   export PATH=/Users/username/.local/boost_1_75_0/:"$PATH"
   ```
 
@@ -121,7 +121,7 @@ In order to run Tfit, our best practices filter CRAM/BAM files for multimapped r
   module load openmpi/1.6.4
   module load gcc/7.1.0
   module load python/3.6.3
-  module load R/3.6.1
+  module load R/4.4.1
   ```
 
 # Running Bidirectional-Flow
@@ -168,7 +168,8 @@ In order to run Tfit, our best practices filter CRAM/BAM files for multimapped r
         --bidir_count                  Run featureCounts to obtain stranded and unstranded read counts over an SAF annotation, such as for Tfit- and/or dREG-derived bidirectionals
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit bidir and full model. If used, you must also specify the Tfit_path parameter.
-        --tfit_3prime                  Use just the 3 prime end bedgraphs for Tfit analysis (should be flipped) **JUST WITH main_hope.nf**
+        --tfit_3prime                  Use just the 3 prime end bedgraphs for Tfit analysis **JUST WITH main_hope.nf**
+        --tfit_5prime                  Use just the 5 prime end bedgraphs for Tfit analysis **JUST WITH main_hope.nf**
         --tfit_prelim                  Run Tfit bidir. If used, you must also specify the Tfit_path parameter. Not compatible with --prelim_files flag.
         --tfit_model                   Run Tfit full model. If used, must specify the Tfit path parameter AND have prelim files from --tfit_prelim process or previous run via the --prelim_files flag. Not compatible with --tfit flag.
         --tfit_split_model             Run Tfit model with different k values for different size regions (<5kb and 5-10kb)
